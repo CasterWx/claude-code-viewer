@@ -6,4 +6,6 @@ claude-code-viewer.db
 
 frontend/node_modules
 frontend/dist
+
 claude_viewer/__pycache__
+claude_viewer/static

@@ -5,6 +5,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = ["claude_viewer"]
 
+[tool.setuptools.package-data]
+claude_viewer = ["static/**/*"]
+
 [project]
 name = "claude-viewer"
 version = "0.1.0"

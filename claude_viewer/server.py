@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional
 import os
@@ -144,9 +145,32 @@ def get_dashboard():
         logger.error(f"Error getting dashboard data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Mount frontend build - will be effective after build
-frontend_path = Path(__file__).parent.parent / "frontend" / "dist"
-if frontend_path.exists():
-    app.mount("/", StaticFiles(directory=str(frontend_path), html=True), name="frontend")
-elif Path("frontend/dist").exists():
-     app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
+# Mount frontend build
+# Priority:
+# 1. claude_viewer/static (packaged)
+# 2. frontend/dist (development)
+
+static_dir = Path(__file__).parent / "static"
+if not static_dir.exists():
+    # Try development path
+    static_dir = Path(__file__).parent.parent / "frontend" / "dist"
+
+if static_dir.exists():
+    # Mount assets if they exist
+    if (static_dir / "assets").exists():
+        app.mount("/assets", StaticFiles(directory=str(static_dir / "assets")), name="assets")
+    
+    # Catch-all for SPA
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # Check if file exists
+        file_path = static_dir / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+            
+        # Don't fallback for API routes
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+            
+        # Fallback to index.html
+        return FileResponse(static_dir / "index.html")
