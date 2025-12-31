@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["claude_viewer"]
+
+[project]
+name = "claude-viewer"
+version = "0.1.0"
+description = "A local viewer for Claude Code logs"
+dependencies = [
+    "click",
+    "fastapi",
+    "uvicorn",
+    "python-multipart"
+]
+requires-python = ">=3.8"
+
+[project.scripts]
+claude-viewer = "claude_viewer.main:cli"
