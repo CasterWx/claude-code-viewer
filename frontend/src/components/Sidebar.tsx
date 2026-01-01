@@ -1,10 +1,9 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import { formatDate } from '../utils/formatDate';
 import { TagManager } from './TagManager';
-import { Folder, ChevronDown, ChevronRight, CheckCircle } from 'lucide-react';
+import { Folder, ChevronDown, ChevronRight } from 'lucide-react';
 import type { Session, Project } from '../types';
-import { api } from '../api';
 
 interface SidebarProps {
     projects: Project[];
@@ -19,16 +18,6 @@ interface SidebarProps {
     loading?: boolean;
 }
 
-interface OneShotStats {
-    overall_score: number;
-    file_count: number;
-    file_stats: Array<{
-        path: string;
-        score: number;
-        status: 'perfect' | 'modified' | 'replaced' | 'deleted';
-    }>;
-}
-
 export const Sidebar: React.FC<SidebarProps> = ({
     projects,
     sessions,
@@ -39,22 +28,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onTagToggle,
     loading
 }) => {
-    const [oneShotStats, setOneShotStats] = useState<Record<string, OneShotStats>>({});
-    const [loadingStats, setLoadingStats] = useState<Record<string, boolean>>({});
-
-    const loadOneShotStats = async (sessionId: string) => {
-        if (loadingStats[sessionId] || oneShotStats[sessionId]) return;
-
-        setLoadingStats(prev => ({ ...prev, [sessionId]: true }));
-        try {
-            const stats = await api.getOneShotStats(sessionId, ['md', 'txt']);
-            setOneShotStats(prev => ({ ...prev, [sessionId]: stats }));
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setLoadingStats(prev => ({ ...prev, [sessionId]: false }));
-        }
-    };
 
     return (
         <div className="w-80 h-full border-r-4 border-black bg-background flex flex-col overflow-hidden">
@@ -139,8 +112,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                                 <div className="text-xs text-gray-500 italic py-2">No sessions found.</div>
                                             ) : (
                                                 sessions.map((session) => {
-                                                    const stats = oneShotStats[session.id];
-                                                    const isLoadingStats = loadingStats[session.id];
 
                                                     return (
                                                         <div
@@ -201,46 +172,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                                                 )}
                                                             </div>
 
-                                                            {/* One Shot Stats UI */}
-                                                            {selectedSessionId === session.id && (
-                                                                <div className="mt-2 mb-2 bg-gray-50 border border-black/5 p-2 rounded-sm" onClick={e => e.stopPropagation()}>
-                                                                    <div className="flex items-center justify-between mb-1">
-                                                                        <span className="text-[10px] font-bold uppercase text-gray-500">Code Survival</span>
-                                                                        {!stats && !isLoadingStats && (
-                                                                            <button
-                                                                                onClick={() => loadOneShotStats(session.id)}
-                                                                                className="text-[9px] font-bold bg-white border border-black px-1.5 py-0.5 hover:bg-black hover:text-white transition-colors"
-                                                                            >
-                                                                                CALCULATE
-                                                                            </button>
-                                                                        )}
-                                                                        {isLoadingStats && (
-                                                                            <span className="text-[9px] animate-pulse">Calculating...</span>
-                                                                        )}
-                                                                    </div>
-
-                                                                    {stats && (
-                                                                        <div className="space-y-1">
-                                                                            <div className="flex items-center gap-2">
-                                                                                <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                                                                    <div
-                                                                                        className={`h-full ${stats.overall_score > 80 ? 'bg-green-500' : stats.overall_score > 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                                                                                        style={{ width: `${stats.overall_score}%` }}
-                                                                                    ></div>
-                                                                                </div>
-                                                                                <span className="text-[10px] font-bold w-8 text-right">{stats.overall_score}%</span>
-                                                                            </div>
-
-                                                                            {stats.overall_score >= 99 && (
-                                                                                <div className="flex items-center gap-1 text-[10px] text-green-600 font-bold bg-green-50 px-1.5 py-0.5 rounded border border-green-100 w-fit">
-                                                                                    <CheckCircle size={10} />
-                                                                                    PERFECT MATCH
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            )}
 
                                                             {/* Bottom Row: Tags & Branch */}
                                                             <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-dashed border-gray-200">

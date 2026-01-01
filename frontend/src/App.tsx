@@ -152,6 +152,12 @@ function AppContent() {
               model={currentSession?.model}
               totalTokens={currentSession?.total_tokens}
               selectedProject={selectedProject}
+              turns={currentSession?.turns}
+              fileChangeCount={currentSession?.file_change_count}
+              startTime={currentSession?.start_time}
+              branch={currentSession?.branch}
+              inputTokens={currentSession?.input_tokens}
+              outputTokens={currentSession?.output_tokens}
             />
           </div>
         )}

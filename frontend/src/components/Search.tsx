@@ -25,7 +25,7 @@ export const Search: React.FC<SearchProps> = ({ onResultClick }) => {
     };
 
     return (
-        <div className="p-8 max-w-7xl mx-auto">
+        <div className="p-8 max-w-5xl mx-auto">
             <div className="mb-8">
                 <h1 className="text-3xl font-black uppercase tracking-tighter text-black flex items-center gap-3 mb-6">
                     <div className="w-10 h-10 bg-primary-red text-white flex items-center justify-center border-2 border-black shadow-hard-sm">
@@ -34,7 +34,7 @@ export const Search: React.FC<SearchProps> = ({ onResultClick }) => {
                     搜索 (Search)
                 </h1>
                 <form onSubmit={handleSearch} className="flex gap-4">
-                    <div className="flex-1 relative">
+                    <div className="flex-1 max-w-4xl relative">
                         <input
                             type="text"
                             value={query}

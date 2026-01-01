@@ -47,9 +47,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({ msg }) => {
                     <div className={`prose prose-sm max-w-none 
                         prose-p:my-2 prose-headings:my-3 
                         prose-pre:bg-black prose-pre:text-white prose-pre:border-2 prose-pre:border-black prose-pre:rounded-none prose-pre:shadow-hard-sm
-                        prose-code:bg-gray-100 prose-code:px-1 prose-code:py-0.5 prose-code:border prose-code:border-black prose-code:text-black prose-code:font-mono prose-code:text-xs
-                        break-words overflow-x-auto ${!isExpanded ? 'max-h-[800px] overflow-hidden relative' : ''
-                        }`}>
+                        [&_pre_*]:!text-white [&_pre_*]:!bg-transparent
+                        prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-sm prose-code:font-mono prose-code:text-xs prose-code:text-black
+                        ${msg.role === 'user' ? 'prose-code:bg-black/10' : 'prose-code:bg-gray-100'}
+                        break-words overflow-x-auto ${!isExpanded ? 'max-h-[800px] overflow-hidden relative' : ''}
+                        `}>
                         <ReactMarkdown>
                             {isExpanded
                                 ? formattedContent
@@ -57,7 +59,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ msg }) => {
                         </ReactMarkdown>
 
                         {!isExpanded && (
-                            <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-white to-transparent" />
+                            <div className={`absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t ${msg.role === 'user' ? 'from-primary-yellow/20' : 'from-white'} to-transparent`} />
                         )}
                     </div>
 

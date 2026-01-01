@@ -132,7 +132,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
 
     return (
         <div className="flex-1 h-full overflow-y-auto bg-dots p-8">
-            <div className="max-w-4xl mx-auto space-y-6">
+            <div className="max-w-6xl mx-auto space-y-6">
 
                 {/* Header Card */}
                 <div className="bg-white border-4 border-black shadow-hard-lg p-6 relative overflow-hidden">

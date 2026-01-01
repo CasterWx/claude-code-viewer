@@ -8,8 +8,8 @@ interface OneShotDiffViewerProps {
     onClose: () => void;
     file: {
         path: string;
-        session_content: string;
-        current_content: string;
+        session_content?: string;
+        current_content?: string;
         status: string;
         retained_lines?: number;
         total_lines?: number;
@@ -23,6 +23,9 @@ export const OneShotDiffViewer: React.FC<OneShotDiffViewerProps> = ({
     file
 }) => {
     if (!isOpen || !file) return null;
+
+    // 处理边界情况: 如果会话生成行数为0且当前代码也为0，显示100%
+    const displayScore = (file.total_lines === 0 && file.retained_lines === 0) ? 100 : file.score;
 
     // Default styles for the diff viewer
     const newStyles = {
@@ -62,37 +65,54 @@ export const OneShotDiffViewer: React.FC<OneShotDiffViewerProps> = ({
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="p-4 border-b-4 border-black flex items-center justify-between bg-white shrink-0">
-                    <div className="flex items-center gap-4">
+                <div className="p-6 border-b-4 border-black flex items-center justify-between bg-white shrink-0">
+                    <div className="flex items-center gap-4 flex-1">
                         <div className={`
-                            w-10 h-10 flex items-center justify-center border-2 border-black font-black text-xs
-                            ${file.score >= 80 ? 'bg-green-400' : file.score > 50 ? 'bg-yellow-400' : 'bg-red-400'}
+                            w-16 h-16 flex items-center justify-center border-2 border-black font-black text-2xl shrink-0
+                            ${displayScore >= 80 ? 'bg-green-400' : displayScore > 50 ? 'bg-yellow-400' : 'bg-red-400'}
                         `}>
-                            {Math.round(file.score)}%
+                            {Math.round(displayScore)}%
                         </div>
-                        <div>
-                            <h2 className="text-xl font-bold uppercase tracking-tight flex items-center gap-2">
+                        <div className="flex-1 min-w-0">
+                            <h2 className="text-xl font-bold uppercase tracking-tight flex items-center gap-2 mb-2">
                                 <span className="text-gray-500">Comparing:</span>
-                                {file.path}
+                                <span className="truncate">{file.path}</span>
                             </h2>
-                            <div className="flex items-center gap-2 text-xs font-mono text-gray-500">
-                                <div className="flex items-center gap-1">
-                                    <span className="font-bold bg-gray-100 px-1 border border-gray-300">SESSION OUTPUT</span>
-                                    <span className="text-gray-400">({file.total_lines || 0} lines)</span>
+
+                            {/* Metrics Cards */}
+                            <div className="flex items-center gap-3">
+                                {/* Session Impact Lines */}
+                                <div className="bg-blue-50 border-2 border-blue-300 px-3 py-1.5 rounded-sm flex items-center gap-2">
+                                    <div className="text-[10px] uppercase font-bold text-blue-600">会话影响</div>
+                                    <div className="text-lg font-black text-blue-700">{file.total_lines || 0}</div>
+                                    <div className="text-[10px] text-blue-500">行</div>
                                 </div>
-                                <ArrowRight size={12} className="text-black" />
-                                <div className="flex items-center gap-1">
-                                    <span className="font-bold bg-black text-white px-1">CURRENT DISK</span>
-                                    {file.retained_lines !== undefined && (
-                                        <span className="text-green-600 font-bold">({file.retained_lines} lines matched)</span>
-                                    )}
+
+                                {/* Arrow */}
+                                <ArrowRight size={16} className="text-gray-400" />
+
+                                {/* Retained Lines */}
+                                <div className="bg-green-50 border-2 border-green-300 px-3 py-1.5 rounded-sm flex items-center gap-2">
+                                    <div className="text-[10px] uppercase font-bold text-green-600">当前实际</div>
+                                    <div className="text-lg font-black text-green-700">{file.retained_lines || 0}</div>
+                                    <div className="text-[10px] text-green-500">行</div>
+                                </div>
+
+                                {/* Status Badge */}
+                                <div className={`
+                                    px-2 py-1 border-2 border-black font-bold text-xs uppercase ml-2
+                                    ${file.status === 'perfect' ? 'bg-green-400' :
+                                        file.status === 'deleted' ? 'bg-gray-400' : 'bg-yellow-400'}
+                                `}>
+                                    {file.status === 'perfect' ? '✓ Perfect' :
+                                        file.status === 'deleted' ? '✗ Deleted' : '~ Modified'}
                                 </div>
                             </div>
                         </div>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 hover:bg-red-500 hover:text-white transition-colors border-2 border-transparent hover:border-black rounded-sm"
+                        className="p-2 hover:bg-red-500 hover:text-white transition-colors border-2 border-transparent hover:border-black rounded-sm ml-4"
                     >
                         <X size={24} />
                     </button>
@@ -116,8 +136,8 @@ export const OneShotDiffViewer: React.FC<OneShotDiffViewerProps> = ({
                                 splitView={true}
                                 compareMethod={DiffMethod.LINES}
                                 styles={newStyles}
-                                leftTitle="Session Generated Code"
-                                rightTitle="Current Live Code"
+                                leftTitle="会话生成代码"
+                                rightTitle="当前实际代码"
                             />
                         </div>
                     )}

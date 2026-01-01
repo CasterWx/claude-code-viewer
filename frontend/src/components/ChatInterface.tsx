@@ -1,9 +1,12 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import type { Message, Tag } from '../types';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, FileText } from 'lucide-react';
 import { MessageItem } from './MessageItem';
 import { TagManager } from './TagManager';
 import { ProjectDetails } from './ProjectDetails';
+import { api } from '../api';
+import { FileChangeModal } from './FileChangeModal';
+import { OneShotDetailsModal } from './OneShotDetailsModal';
 
 interface ChatInterfaceProps {
     sessionId?: string;
@@ -14,6 +17,12 @@ interface ChatInterfaceProps {
     model?: string;
     totalTokens?: number;
     selectedProject?: string | null;
+    turns?: number;
+    fileChangeCount?: number;
+    startTime?: string | null;
+    branch?: string;
+    inputTokens?: number;
+    outputTokens?: number;
 }
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -24,13 +33,58 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     onTagsChange,
     model,
     totalTokens,
-    selectedProject
+    selectedProject,
+    turns,
+    fileChangeCount,
+    branch,
+    inputTokens,
+    outputTokens
 }) => {
     const bottomRef = useRef<HTMLDivElement>(null);
+    const [fileChangesOpen, setFileChangesOpen] = useState(false);
+    const [fileChanges, setFileChanges] = useState<any[]>([]);
+    const [codeSurvival, setCodeSurvival] = useState<number | null>(null);
+    const [loadingSurvival, setLoadingSurvival] = useState(false);
+    const [survivalStats, setSurvivalStats] = useState<any>(null);
+    const [survivalDetailsOpen, setSurvivalDetailsOpen] = useState(false);
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    // Auto-load code survival stats when session changes
+    useEffect(() => {
+        if (sessionId && fileChangeCount && fileChangeCount > 0) {
+            setLoadingSurvival(true);
+            api.getOneShotStats(sessionId, ['md', 'txt'])
+                .then(stats => {
+                    setCodeSurvival(stats.overall_score);
+                    setSurvivalStats(stats);
+                })
+                .catch(() => {
+                    setCodeSurvival(null);
+                    setSurvivalStats(null);
+                })
+                .finally(() => {
+                    setLoadingSurvival(false);
+                });
+        } else {
+            setCodeSurvival(null);
+            setSurvivalStats(null);
+        }
+    }, [sessionId, fileChangeCount]);
+
+    const handleViewChanges = async () => {
+        if (!sessionId) return;
+        setFileChanges([]);
+        setFileChangesOpen(true);
+        try {
+            const changes = await api.getSessionChanges(sessionId);
+            setFileChanges(changes);
+        } catch (e) {
+            console.error("Failed to load changes", e);
+        }
+    };
 
     if (loading) {
         return (
@@ -59,39 +113,110 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return (
         <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
             {sessionId && (
-                <div className="border-b-4 border-black p-4 flex items-center justify-between bg-gray-50 flex-shrink-0 z-10 shadow-sm">
-                    <div className="flex items-center gap-4 flex-wrap">
-                        <div className="flex flex-col gap-1">
-                            <div className="font-mono text-sm font-bold bg-black text-white px-3 py-1 inline-block shadow-hard-sm transform -rotate-1">
-                                {sessionId}
+                <div className="border-b-4 border-black p-3 bg-gray-50 flex-shrink-0 z-10 shadow-sm">
+                    {/* Compact Stats Bar */}
+                    <div className="flex items-center justify-between gap-4 flex-wrap text-xs">
+                        {/* Left: Session ID + Tags */}
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <div className="font-mono text-xs font-bold bg-black text-white px-2 py-1">
+                                {sessionId.substring(0, 12)}...
                             </div>
-                            {(model || totalTokens) && (
-                                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider mt-1 ml-1">
-                                    {model && <span className="text-primary-blue">{model}</span>}
-                                    {totalTokens && <span className="text-gray-500">• {totalTokens.toLocaleString()} TOKENS</span>}
-                                </div>
-                            )}
-                        </div>
-                        {onTagsChange && (
-                            <div className="ml-4 pl-4 border-l-2 border-black/10">
+                            {onTagsChange && (
                                 <TagManager
                                     sessionId={sessionId}
                                     initialTags={initialTags}
                                     onTagsChange={onTagsChange}
+                                    compact={true}
                                 />
-                            </div>
-                        )}
+                            )}
+                        </div>
+
+                        {/* Right: Stats */}
+                        <div className="flex items-center gap-3 flex-wrap font-mono">
+                            {model && (
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-gray-500 uppercase text-[10px] font-bold">Model:</span>
+                                    <span className="text-primary-blue font-bold">{model.replace('claude-', '').replace('3-5-', '')}</span>
+                                </div>
+                            )}
+                            {turns !== undefined && (
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-gray-500 uppercase text-[10px] font-bold">Turns:</span>
+                                    <span className="font-black">{turns}</span>
+                                </div>
+                            )}
+                            {totalTokens !== undefined && (
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-gray-500 uppercase text-[10px] font-bold">Tokens:</span>
+                                    <span className="font-black">{(totalTokens / 1000).toFixed(1)}k</span>
+                                    {inputTokens !== undefined && outputTokens !== undefined && (
+                                        <span className="text-gray-400 text-[10px]">
+                                            ({(inputTokens / 1000).toFixed(1)}k/{(outputTokens / 1000).toFixed(1)}k)
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+                            {fileChangeCount !== undefined && fileChangeCount > 0 && (
+                                <button
+                                    onClick={handleViewChanges}
+                                    className="flex items-center gap-1.5 bg-green-50 text-green-700 px-2 py-1 border border-green-300 hover:bg-green-100 transition-colors"
+                                    title="View file changes"
+                                >
+                                    <FileText size={12} />
+                                    <span className="font-black">{fileChangeCount}</span>
+                                    <span className="text-[10px] uppercase font-bold">Files</span>
+                                </button>
+                            )}
+                            {codeSurvival !== null && (
+                                <button
+                                    onClick={() => setSurvivalDetailsOpen(true)}
+                                    className="flex items-center gap-1.5 bg-white border-2 border-black px-2 py-1 hover:bg-primary-yellow transition-colors cursor-pointer"
+                                    title="View Code Survival Report"
+                                >
+                                    <span className="text-gray-500 uppercase text-[10px] font-bold">Survival:</span>
+                                    <span className={`font-black ${codeSurvival >= 80 ? 'text-green-600' : codeSurvival > 50 ? 'text-yellow-600' : 'text-red-600'}`}>
+                                        {Math.round(codeSurvival)}%
+                                    </span>
+                                </button>
+                            )}
+                            {loadingSurvival && (
+                                <div className="text-[10px] text-gray-400 animate-pulse">Loading survival...</div>
+                            )}
+                            {branch && (
+                                <div className="flex items-center gap-1.5 text-gray-500">
+                                    <span className="uppercase text-[10px] font-bold">Br:</span>
+                                    <span className="text-xs max-w-[100px] truncate" title={branch}>{branch}</span>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             )}
             <div className="flex-1 overflow-y-auto bg-white">
-                <div className="max-w-4xl mx-auto py-8 px-6 space-y-8">
+                <div className="max-w-6xl mx-auto py-8 px-6 space-y-8">
                     {messages.map((msg, idx) => (
                         <MessageItem key={idx} msg={msg} />
                     ))}
                     <div ref={bottomRef} className="h-4" />
                 </div>
             </div>
+
+            {sessionId && (
+                <>
+                    <FileChangeModal
+                        isOpen={fileChangesOpen}
+                        onClose={() => setFileChangesOpen(false)}
+                        sessionId={sessionId}
+                        changes={fileChanges}
+                    />
+                    <OneShotDetailsModal
+                        isOpen={survivalDetailsOpen}
+                        onClose={() => setSurvivalDetailsOpen(false)}
+                        sessionId={sessionId}
+                        stats={survivalStats}
+                    />
+                </>
+            )}
         </div>
     );
 };
