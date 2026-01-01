@@ -298,3 +298,118 @@ class Analytics:
                         
         return changes
 
+    def calculate_oneshot_stats(self, session_id: str, exclude_extensions: List[str] = None) -> Dict[str, Any]:
+        """Calculates 'One Shot' code survival stats for a session."""
+        if exclude_extensions is None:
+            exclude_extensions = ['.md', '.txt']
+            
+        # Get project path
+        with sqlite3.connect(self.db_path) as db:
+            db.row_factory = sqlite3.Row
+            row = db.execute("""
+                SELECT p.path 
+                FROM sessions s
+                JOIN projects p ON s.project_name = p.name
+                WHERE s.id = ?
+            """, (session_id,)).fetchone()
+            
+            if not row or not row['path']:
+                return {"error": "Project path not found"}
+            
+            project_path = Path(row['path'])
+
+        changes = self.get_session_changes(session_id)
+        
+        # Group changes by file (take the latest change for each file)
+        files_map = {}
+        for change in changes:
+            path_str = change['path']
+            # Skip excluded extensions
+            if any(path_str.endswith(ext) for ext in exclude_extensions):
+                continue
+                
+            # Store the latest change content for this file
+            files_map[path_str] = change
+
+        file_stats = []
+        total_score = 0
+        file_count = 0
+
+        for rel_path, change in files_map.items():
+            # Handle absolute vs relative paths
+            path_obj = Path(rel_path)
+            if path_obj.is_absolute():
+                full_path = path_obj
+            else:
+                full_path = project_path / rel_path.lstrip('/')
+            
+            # If file doesn't exist, score is 0
+            if not full_path.exists():
+                # Try to see if it works relative to project path (fallback)
+                if path_obj.is_absolute():
+                     fallback = project_path / rel_path.lstrip('/')
+                     if fallback.exists():
+                         full_path = fallback
+                     else:
+                        file_stats.append({
+                            "path": rel_path,
+                            "score": 0,
+                            "status": "deleted"
+                        })
+                        file_count += 1
+                        continue
+                else:
+                    file_stats.append({
+                        "path": rel_path,
+                        "score": 0,
+                        "status": "deleted"
+                    })
+                    file_count += 1
+                    continue
+                
+            try:
+                # Read current file content
+                with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    current_content = f.read()
+
+                session_content = change['content'] or ""
+                
+                # Calculate similarity (Line consistency logic)
+                session_lines = session_content.splitlines()
+                current_lines = current_content.splitlines()
+                
+                matcher = difflib.SequenceMatcher(None, session_lines, current_lines)
+                
+                # Count matching lines
+                matching_blocks = matcher.get_matching_blocks()
+                retained_lines = sum(block.size for block in matching_blocks)
+                total_lines = len(session_lines)
+                
+                score = (retained_lines / total_lines) if total_lines > 0 else 0
+                
+                is_perfect = score > 0.99
+                
+                file_stats.append({
+                    "path": rel_path,
+                    "score": round(score * 100, 1),
+                    "status": "perfect" if is_perfect else "modified" if score > 0 else "replaced",
+                    "total_lines": total_lines,
+                    "retained_lines": retained_lines,
+                    "session_content": session_content,
+                    "current_content": current_content
+                })
+                
+                total_score += score
+                file_count += 1
+                
+            except Exception as e:
+                # Handle permission errors or bin files
+                continue
+
+        overall_score = (total_score / file_count * 100) if file_count > 0 else 0
+
+        return {
+            "overall_score": round(overall_score, 1),
+            "file_count": file_count,
+            "file_stats": sorted(file_stats, key=lambda x: x['score'], reverse=True)
+        }

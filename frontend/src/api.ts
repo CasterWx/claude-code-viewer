@@ -17,6 +17,11 @@ export const api = {
         const res = await fetch(`${API_BASE}/sessions/${sessionId}/changes`);
         return res.json();
     },
+    getOneShotStats: async (sessionId: string, exclude?: string[]) => {
+        const query = exclude ? `?exclude=${exclude.join(',')}` : '';
+        const res = await fetch(`${API_BASE}/sessions/${sessionId}/oneshot${query}`);
+        return res.json();
+    },
     search: async (query: string) => {
         const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
         return res.json();

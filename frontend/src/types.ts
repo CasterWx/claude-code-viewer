@@ -2,6 +2,9 @@ export interface Project {
     name: string;
     last_updated: string | null;
     session_count: number;
+    total_tokens?: number;
+    total_turns?: number;
+    total_files?: number;
 }
 
 export interface Tag {

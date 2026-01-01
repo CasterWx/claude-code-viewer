@@ -1,6 +1,10 @@
+
+import React, { useState } from 'react';
 import { formatDate } from '../utils/formatDate';
 import { TagManager } from './TagManager';
+import { Folder, ChevronDown, ChevronRight, CheckCircle } from 'lucide-react';
 import type { Session, Project } from '../types';
+import { api } from '../api';
 
 interface SidebarProps {
     projects: Project[];
@@ -15,6 +19,16 @@ interface SidebarProps {
     loading?: boolean;
 }
 
+interface OneShotStats {
+    overall_score: number;
+    file_count: number;
+    file_stats: Array<{
+        path: string;
+        score: number;
+        status: 'perfect' | 'modified' | 'replaced' | 'deleted';
+    }>;
+}
+
 export const Sidebar: React.FC<SidebarProps> = ({
     projects,
     sessions,
@@ -25,9 +39,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onTagToggle,
     loading
 }) => {
-    const handleBackToProjects = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        onProjectSelect(""); // Or update parent to accept null/empty string to clear selection
+    const [oneShotStats, setOneShotStats] = useState<Record<string, OneShotStats>>({});
+    const [loadingStats, setLoadingStats] = useState<Record<string, boolean>>({});
+
+    const loadOneShotStats = async (sessionId: string) => {
+        if (loadingStats[sessionId] || oneShotStats[sessionId]) return;
+
+        setLoadingStats(prev => ({ ...prev, [sessionId]: true }));
+        try {
+            const stats = await api.getOneShotStats(sessionId, ['md', 'txt']);
+            setOneShotStats(prev => ({ ...prev, [sessionId]: stats }));
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoadingStats(prev => ({ ...prev, [sessionId]: false }));
+        }
     };
 
     return (
@@ -43,134 +69,222 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-8 bg-dots">
-                {/* Projects Section - Only show when no project selected */}
-                {!selectedProject && (
-                    <section>
-                        <div className="flex items-center justify-between mb-4">
-                            <h2 className="text-xl font-bold uppercase tracking-wide border-b-4 border-primary-yellow inline-block bg-white px-2">项目列表</h2>
-                            <span className="bg-black text-white text-xs font-bold px-2 py-0.5 rounded-none">{projects.length}</span>
+            <div className="flex-1 overflow-y-auto bg-dots">
+                <div className="p-4 space-y-2">
+                    <div className="flex items-center justify-between mb-4 px-2">
+                        <h2 className="text-xl font-bold uppercase tracking-wide border-b-4 border-primary-yellow inline-block bg-white px-2">项目列表</h2>
+                        <span className="bg-black text-white text-xs font-bold px-2 py-0.5 rounded-none">{projects.length}</span>
+                    </div>
+
+                    {loading && projects.length === 0 ? (
+                        <div className="p-4 border-2 border-black bg-white animate-pulse">
+                            <div className="h-4 bg-gray-200 w-3/4 mb-2"></div>
+                            <div className="h-3 bg-gray-200 w-1/2"></div>
                         </div>
-                        <div className="space-y-3">
-                            {loading && projects.length === 0 ? (
-                                <div className="p-4 border-2 border-black bg-white animate-pulse">
-                                    <div className="h-4 bg-gray-200 w-3/4 mb-2"></div>
-                                    <div className="h-3 bg-gray-200 w-1/2"></div>
-                                </div>
-                            ) : (
-                                projects.map((project) => (
+                    ) : (
+                        projects.map((project) => {
+                            const isSelected = selectedProject === project.name;
+                            const projectDisplayName = project.name.split('/').pop();
+
+                            return (
+                                <div key={project.name} className="group/project">
+                                    {/* Project Item */}
                                     <div
-                                        key={project.name}
                                         onClick={() => onProjectSelect(project.name)}
                                         className={`
-                                            group relative p-4 border-2 border-black cursor-pointer transition-all duration-200 ease-out bg-white hover:-translate-y-1 hover:shadow-hard-sm
+                                            relative p-3 border-2 border-black cursor-pointer transition-all duration-200 ease-out mb-2
+                                            ${isSelected
+                                                ? 'bg-primary-blue text-white shadow-hard-sm translate-x-[2px] translate-y-[2px]'
+                                                : 'bg-white hover:-translate-y-1 hover:shadow-hard-sm hover:border-black'}
                                         `}
                                     >
-                                        <div className="flex items-start justify-between mb-2">
-                                            <div className="font-bold truncate pr-2 w-full">{project.name.split('/').pop()}</div>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="font-bold truncate pr-2 flex-1 flex items-center gap-2">
+                                                <Folder size={16} className={isSelected ? "text-white fill-white" : "text-black fill-primary-yellow"} />
+                                                {projectDisplayName}
+                                            </div>
+                                            {isSelected ? (
+                                                <ChevronDown size={16} className="text-white" />
+                                            ) : (
+                                                <ChevronRight size={16} className="text-black opacity-0 group-hover/project:opacity-100 transition-opacity" />
+                                            )}
                                         </div>
-                                        <div className="text-xs font-medium flex items-center justify-between text-gray-500">
-                                            <span>{project.session_count} 个会话</span>
+
+                                        {/* Project Stats */}
+                                        <div className={`grid grid-cols-2 gap-1 text-[9px] font-bold uppercase tracking-wider mb-2 ${isSelected ? 'text-white/90' : 'text-gray-500'}`}>
+                                            <div title="Total Tokens">
+                                                TOKENS: {project.total_tokens ? (project.total_tokens / 1000).toFixed(1) + 'k' : '0'}
+                                            </div>
+                                            <div title="Total Files Modified">
+                                                FILES: {project.total_files || 0}
+                                            </div>
+                                            <div title="Total Turns">
+                                                TURNS: {project.total_turns || 0}
+                                            </div>
+                                            <div title="Session Count">
+                                                SESSIONS: {project.session_count}
+                                            </div>
+                                        </div>
+
+                                        <div className={`text-[9px] pt-1 border-t ${isSelected ? 'border-white/20 text-white/60' : 'border-gray-100 text-gray-400'} flex justify-between`}>
+                                            <span>Last active</span>
                                             <span>{formatDate(project.last_updated)}</span>
                                         </div>
                                     </div>
-                                ))
-                            )}
-                        </div>
-                    </section>
-                )}
 
-                {/* Sessions Section - Only show when project selected */}
-                {selectedProject && (
-                    <section className="animate-in slide-in-from-right duration-300">
-                        <div className="mb-4">
-                            <button
-                                onClick={handleBackToProjects}
-                                className="flex items-center gap-2 text-sm font-bold uppercase border-2 border-black bg-white px-3 py-1 hover:bg-gray-100 shadow-hard-sm mb-4"
-                            >
-                                ← 返回项目列表
-                            </button>
-                            <div className="flex items-center justify-between">
-                                <h2 className="text-lg font-black uppercase tracking-tight truncate pr-4" title={selectedProject}>
-                                    {selectedProject.split('/').pop()}
-                                </h2>
-                                <span className="bg-black text-white text-xs font-bold px-2 py-0.5 rounded-none">{sessions.length}</span>
-                            </div>
-                        </div>
-                        <div className="space-y-3">
-                            {sessions.map((session) => (
-                                <div
-                                    key={session.id}
-                                    onClick={() => onSessionSelect(session.id)}
-                                    className={`
-                                        group relative p-4 border-2 border-black cursor-pointer transition-all duration-200 ease-out
-                                        ${selectedSessionId === session.id
-                                            ? 'bg-primary-yellow text-black shadow-none translate-x-[2px] translate-y-[2px]'
-                                            : 'bg-white hover:-translate-y-1 hover:shadow-hard-sm'}
-                                    `}
-                                >
-                                    <div className="flex items-start justify-between gap-2 mb-2">
-                                        <div className="font-bold line-clamp-2 leading-tight break-all text-xs">
-                                            {session.id}
-                                        </div>
-                                    </div>
+                                    {/* Sessions List (Accordion Body) */}
+                                    {isSelected && (
+                                        <div className="ml-4 pl-4 border-l-4 border-black/10 space-y-3 mb-6 animate-in slide-in-from-left-2 duration-200">
+                                            {sessions.length === 0 ? (
+                                                <div className="text-xs text-gray-500 italic py-2">No sessions found.</div>
+                                            ) : (
+                                                sessions.map((session) => {
+                                                    const stats = oneShotStats[session.id];
+                                                    const isLoadingStats = loadingStats[session.id];
 
-                                    <div className="flex flex-wrap gap-2 text-[10px] font-bold uppercase tracking-wider mb-2">
-                                        <span className={`px-1.5 py-0.5 border border-black ${selectedSessionId === session.id ? 'bg-white' : 'bg-gray-100'}`}>
-                                            {formatDate(session.start_time)}
-                                        </span>
-                                        {session.model && (
-                                            <span
-                                                className={`px-1.5 py-0.5 border border-black ${selectedSessionId === session.id ? 'bg-white' : 'bg-gray-100'}`}
-                                                title={session.model}
-                                            >
-                                                {session.model.replace('claude-3-5-', '')}
-                                            </span>
-                                        )}
-                                        {session.file_change_count !== undefined && session.file_change_count > 0 && (
-                                            <span
-                                                className={`px-1.5 py-0.5 border border-black flex items-center gap-1 ${selectedSessionId === session.id ? 'bg-white' : 'bg-gray-100'}`}
-                                                title={`${session.file_change_count} files changed`}
-                                            >
-                                                <span className="w-2 h-2 bg-black rounded-none"></span>
-                                                {session.file_change_count}
-                                            </span>
-                                        )}
-                                        {session.total_tokens !== undefined && (
-                                            <span className={`px-1.5 py-0.5 border border-black ${selectedSessionId === session.id ? 'bg-white' : 'bg-gray-100'}`}>
-                                                {(session.total_tokens / 1000).toFixed(1)}k
-                                            </span>
-                                        )}
-                                    </div>
+                                                    return (
+                                                        <div
+                                                            key={session.id}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                onSessionSelect(session.id);
+                                                                // Auto load stats on select if enabled, or keep manual
+                                                            }}
+                                                            className={`
+                                                            group relative p-3 border-2 border-black cursor-pointer transition-all duration-200 ease-out
+                                                            ${selectedSessionId === session.id
+                                                                    ? 'bg-primary-yellow text-black shadow-none ring-2 ring-black ring-offset-1'
+                                                                    : 'bg-white hover:-translate-y-0.5 hover:shadow-hard-xs'}
+                                                        `}
+                                                        >
+                                                            <div className="flex items-start justify-between gap-2 mb-2">
+                                                                <div className="font-bold text-xs font-mono break-all leading-tight">
+                                                                    {session.id}
+                                                                </div>
+                                                            </div>
 
-                                    <div className="mt-2 pt-2 border-t border-black/10">
-                                        <div className="flex flex-wrap gap-1 mb-2">
-                                            {session.tags && session.tags.map(tag => (
-                                                <span
-                                                    key={tag.id}
-                                                    className={`
-                                                        px-2 py-0.5 text-[10px] font-bold border border-black rounded-full
-                                                        ${selectedSessionId === session.id ? 'bg-black text-white' : 'bg-primary-blue/10 text-primary-blue'}
-                                                    `}
-                                                >
-                                                    {tag.name}
-                                                </span>
-                                            ))}
+                                                            <div className="flex flex-wrap gap-1.5 text-[9px] uppercase font-bold text-gray-500 mb-2">
+                                                                {/* Model Badge */}
+                                                                {session.model && (
+                                                                    <span className="flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 border border-black/5 rounded-sm">
+                                                                        {session.model.replace('claude-', '').replace('3-5-', '')}
+                                                                    </span>
+                                                                )}
+
+                                                                {/* Date */}
+                                                                <span className="flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 border border-black/5 rounded-sm">
+                                                                    {formatDate(session.start_time).split(' ')[0]}
+                                                                </span>
+
+                                                                {/* Tokens */}
+                                                                {session.total_tokens !== undefined && (
+                                                                    <span className="flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 border border-black/5 rounded-sm">
+                                                                        {(session.total_tokens / 1000).toFixed(1)}k TOKENS
+                                                                    </span>
+                                                                )}
+
+                                                                {/* Turns */}
+                                                                {session.turns !== undefined && (
+                                                                    <span className="flex items-center gap-1 bg-gray-100 px-1.5 py-0.5 border border-black/5 rounded-sm" title="Turns">
+                                                                        {session.turns} TURNS
+                                                                    </span>
+                                                                )}
+
+                                                                {/* File Changes */}
+                                                                {session.file_change_count !== undefined && session.file_change_count > 0 && (
+                                                                    <span
+                                                                        className="flex items-center gap-1 bg-green-50 text-green-700 px-1.5 py-0.5 border border-green-100 rounded-sm"
+                                                                        title={`${session.file_change_count} files changed`}
+                                                                    >
+                                                                        {session.file_change_count} FILES
+                                                                    </span>
+                                                                )}
+                                                            </div>
+
+                                                            {/* One Shot Stats UI */}
+                                                            {selectedSessionId === session.id && (
+                                                                <div className="mt-2 mb-2 bg-gray-50 border border-black/5 p-2 rounded-sm" onClick={e => e.stopPropagation()}>
+                                                                    <div className="flex items-center justify-between mb-1">
+                                                                        <span className="text-[10px] font-bold uppercase text-gray-500">Code Survival</span>
+                                                                        {!stats && !isLoadingStats && (
+                                                                            <button
+                                                                                onClick={() => loadOneShotStats(session.id)}
+                                                                                className="text-[9px] font-bold bg-white border border-black px-1.5 py-0.5 hover:bg-black hover:text-white transition-colors"
+                                                                            >
+                                                                                CALCULATE
+                                                                            </button>
+                                                                        )}
+                                                                        {isLoadingStats && (
+                                                                            <span className="text-[9px] animate-pulse">Calculating...</span>
+                                                                        )}
+                                                                    </div>
+
+                                                                    {stats && (
+                                                                        <div className="space-y-1">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                                                                    <div
+                                                                                        className={`h-full ${stats.overall_score > 80 ? 'bg-green-500' : stats.overall_score > 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                                                                        style={{ width: `${stats.overall_score}%` }}
+                                                                                    ></div>
+                                                                                </div>
+                                                                                <span className="text-[10px] font-bold w-8 text-right">{stats.overall_score}%</span>
+                                                                            </div>
+
+                                                                            {stats.overall_score >= 99 && (
+                                                                                <div className="flex items-center gap-1 text-[10px] text-green-600 font-bold bg-green-50 px-1.5 py-0.5 rounded border border-green-100 w-fit">
+                                                                                    <CheckCircle size={10} />
+                                                                                    PERFECT MATCH
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+
+                                                            {/* Bottom Row: Tags & Branch */}
+                                                            <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-dashed border-gray-200">
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {session.tags && session.tags.map(tag => (
+                                                                        <span
+                                                                            key={tag.id}
+                                                                            className={`
+                                                                            px-1.5 py-px text-[9px] font-bold border border-black/10 rounded-full
+                                                                            ${selectedSessionId === session.id ? 'bg-black text-white' : 'bg-blue-50 text-blue-800'}
+                                                                        `}
+                                                                        >
+                                                                            {tag.name}
+                                                                        </span>
+                                                                    ))}
+                                                                    {selectedSessionId === session.id && (
+                                                                        <div onClick={(e) => e.stopPropagation()}>
+                                                                            <TagManager
+                                                                                sessionId={session.id}
+                                                                                initialTags={session.tags || []}
+                                                                                onTagsChange={onTagToggle ? () => onTagToggle('') : () => { }}
+                                                                                compact={true}
+                                                                            />
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+
+                                                                {session.branch && (
+                                                                    <div className="text-[9px] font-mono text-gray-400 flex items-center gap-1 shrink-0" title={`Branch: ${session.branch}`}>
+                                                                        Br: {session.branch}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })
+                                            )}
                                         </div>
-                                        <div onClick={(e) => e.stopPropagation()}>
-                                            <TagManager
-                                                sessionId={session.id}
-                                                initialTags={session.tags || []}
-                                                onTagsChange={onTagToggle ? () => onTagToggle('') : () => { }}
-                                                compact={true}
-                                            />
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
-                            ))}
-                        </div>
-                    </section>
-                )}
+                            );
+                        })
+                    )}
+                </div>
             </div>
         </div>
     );

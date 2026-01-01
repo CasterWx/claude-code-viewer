@@ -167,7 +167,10 @@ class Storage:
                 p.name, 
                 p.path,
                 MAX(s.start_time) as last_updated,
-                COUNT(s.id) as session_count
+                COUNT(s.id) as session_count,
+                SUM(s.total_tokens) as total_tokens,
+                SUM(s.turns) as total_turns,
+                SUM(s.file_change_count) as total_files
             FROM projects p
             LEFT JOIN sessions s ON p.name = s.project_name
             GROUP BY p.name

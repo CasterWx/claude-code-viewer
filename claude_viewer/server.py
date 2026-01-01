@@ -63,6 +63,11 @@ def get_session_changes(session_id: str):
 def get_session(session_id: str):
     return storage.get_messages(session_id)
 
+@app.get("/api/sessions/{session_id}/oneshot")
+def get_session_oneshot(session_id: str, exclude: Optional[str] = None):
+    exclude_list = exclude.split(',') if exclude else None
+    return analytics.calculate_oneshot_stats(session_id, exclude_list)
+
 @app.get("/api/search")
 def search(q: str = Query(..., min_length=1)):
     return storage.search_messages(q)

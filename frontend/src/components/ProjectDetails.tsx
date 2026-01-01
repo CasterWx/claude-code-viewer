@@ -1,13 +1,25 @@
-import React, { useEffect, useState } from 'react';
+
+import React, { useEffect, useState, useRef } from 'react';
 import type { ProjectDetails as ProjectDetailsType, Session } from '../types';
 import { api } from '../api';
-import { Folder, GitBranch, FileCode, Activity, MessageSquare, Database, FileText } from 'lucide-react';
+import { Folder, GitBranch, FileCode, Activity, MessageSquare, Database, FileText, CheckCircle } from 'lucide-react';
 import { formatDateTime } from '../utils/formatDateTime';
 import { FileChangeModal } from './FileChangeModal';
 import { SessionStatsModal } from './SessionStatsModal';
+import { OneShotDetailsModal } from './OneShotDetailsModal';
 
 interface ProjectDetailsProps {
     projectName: string;
+}
+
+interface OneShotStats {
+    overall_score: number;
+    file_count: number;
+    file_stats: Array<{
+        path: string;
+        score: number;
+        status: 'perfect' | 'modified' | 'replaced' | 'deleted';
+    }>;
 }
 
 export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) => {
@@ -25,6 +37,31 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
     const [statsModalOpen, setStatsModalOpen] = useState(false);
     const [statsSession, setStatsSession] = useState<Session | null>(null);
 
+    // One Shot Stats State
+    const [oneShotStats, setOneShotStats] = useState<Record<string, OneShotStats>>({});
+    const [loadingStats, setLoadingStats] = useState<Record<string, boolean>>({});
+
+    // One Shot Details Modal
+    const [oneShotDetailsOpen, setOneShotDetailsOpen] = useState(false);
+    const [showDetailsSessionId, setShowDetailsSessionId] = useState<string | null>(null);
+
+    // Track if we've already triggered auto-load for the current session list
+    const autoLoadTriggered = useRef(false);
+
+    const loadOneShotStats = async (sessionId: string) => {
+        if (loadingStats[sessionId] || oneShotStats[sessionId]) return;
+
+        setLoadingStats(prev => ({ ...prev, [sessionId]: true }));
+        try {
+            const stats = await api.getOneShotStats(sessionId, ['md', 'txt']);
+            setOneShotStats(prev => ({ ...prev, [sessionId]: stats }));
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoadingStats(prev => ({ ...prev, [sessionId]: false }));
+        }
+    };
+
     const handleViewChanges = async (sessionId: string) => {
         setSelectedSessionId(sessionId);
         setFileChanges([]); // clear previous
@@ -37,9 +74,17 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
         }
     };
 
+    const handleViewOneShotDetails = (session: Session) => {
+        if (!oneShotStats[session.id]) return;
+        setShowDetailsSessionId(session.id);
+        setOneShotDetailsOpen(true);
+    };
+
+    // Initial Load
     useEffect(() => {
         setLoading(true);
         setError(null);
+        autoLoadTriggered.current = false; // Reset trigger
         Promise.all([
             api.getProjectDetails(projectName),
             api.getSessions(projectName)
@@ -51,6 +96,22 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
             .catch(err => setError(err.message))
             .finally(() => setLoading(false));
     }, [projectName]);
+
+    // Auto-Calculate One Shot Stats
+    useEffect(() => {
+        if (!loading && sessions.length > 0 && !autoLoadTriggered.current) {
+            autoLoadTriggered.current = true;
+
+            // Filter sessions that have file changes
+            const sessionsWithChanges = sessions.filter(s => (s.file_change_count || 0) > 0);
+
+            // Limit concurrency? For now just fire them all, browser/server will handle queue
+            // If too many, we might want to batch. Assuming reasonable number for now.
+            sessionsWithChanges.forEach(session => {
+                loadOneShotStats(session.id);
+            });
+        }
+    }, [sessions, loading]);
 
     if (loading) {
         return (
@@ -188,70 +249,117 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
                                         <th className="p-3 text-right">Turns</th>
                                         <th className="p-3 text-right">Tokens (I/O)</th>
                                         <th className="p-3 text-right">Files Changed</th>
+                                        <th className="p-3 text-center w-32">Code Survival</th>
                                         <th className="p-3 text-center">Activity</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {sessions.map((session) => (
-                                        <tr key={session.id} className="border-b border-gray-200 hover:bg-yellow-50 transition-colors">
-                                            <td className="p-3 font-mono text-sm">
-                                                <div className="flex flex-col">
-                                                    <span className="font-bold">{session.id.substring(0, 8)}...</span>
-                                                    {session.branch && (
-                                                        <span className="text-[10px] text-gray-500 flex items-center gap-1">
-                                                            <GitBranch size={8} /> {session.branch}
-                                                        </span>
+                                    {sessions.map((session) => {
+                                        const stats = oneShotStats[session.id];
+                                        const isLoadingStats = loadingStats[session.id];
+
+                                        return (
+                                            <tr key={session.id} className="border-b border-gray-200 hover:bg-yellow-50 transition-colors">
+                                                <td className="p-3 font-mono text-sm">
+                                                    <div className="flex flex-col">
+                                                        <span className="font-bold">{session.id.substring(0, 8)}...</span>
+                                                        {session.branch && (
+                                                            <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                                                                <GitBranch size={8} /> {session.branch}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="p-3 text-sm text-gray-600">
+                                                    {formatDateTime(session.start_time)}
+                                                </td>
+                                                <td className="p-3 text-sm">
+                                                    <span className="bg-gray-100 px-2 py-0.5 text-xs border border-gray-300">
+                                                        {session.model?.split(':')[0] || 'Unknown'}
+                                                    </span>
+                                                </td>
+                                                <td className="p-3 text-right font-mono text-sm">
+                                                    {session.turns || '-'}
+                                                </td>
+                                                <td className="p-3 text-right text-sm">
+                                                    <div className="flex flex-col items-end text-xs">
+                                                        <span className="font-bold">{(session.total_tokens || 0).toLocaleString()}</span>
+                                                        {session.input_tokens !== undefined && (
+                                                            <span className="text-gray-400">
+                                                                {(session.input_tokens / 1000).toFixed(1)}k / {(session.output_tokens || 0) / 1000 > 0 ? ((session.output_tokens || 0) / 1000).toFixed(1) + 'k' : '0'}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="p-3 text-right">
+                                                    {(session.file_change_count || 0) > 0 ? (
+                                                        <button
+                                                            onClick={() => handleViewChanges(session.id)}
+                                                            className="inline-flex items-center gap-1 bg-black text-white px-2 py-0.5 text-xs font-bold hover:bg-primary-yellow hover:text-black transition-colors"
+                                                        >
+                                                            <FileText size={10} />
+                                                            {session.file_change_count}
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-gray-300 text-xs">-</span>
                                                     )}
-                                                </div>
-                                            </td>
-                                            <td className="p-3 text-sm text-gray-600">
-                                                {formatDateTime(session.start_time)}
-                                            </td>
-                                            <td className="p-3 text-sm">
-                                                <span className="bg-gray-100 px-2 py-0.5 text-xs border border-gray-300">
-                                                    {session.model?.split(':')[0] || 'Unknown'}
-                                                </span>
-                                            </td>
-                                            <td className="p-3 text-right font-mono text-sm">
-                                                {session.turns || '-'}
-                                            </td>
-                                            <td className="p-3 text-right text-sm">
-                                                <div className="flex flex-col items-end text-xs">
-                                                    <span className="font-bold">{(session.total_tokens || 0).toLocaleString()}</span>
-                                                    {session.input_tokens !== undefined && (
-                                                        <span className="text-gray-400">
-                                                            {(session.input_tokens / 1000).toFixed(1)}k / {(session.output_tokens || 0) / 1000 > 0 ? ((session.output_tokens || 0) / 1000).toFixed(1) + 'k' : '0'}
-                                                        </span>
+                                                </td>
+                                                <td className="p-3 text-center">
+                                                    {/* One Shot Cell */}
+                                                    {(session.file_change_count || 0) > 0 ? (
+                                                        <div className="flex flex-col items-center gap-1 min-h-[40px] justify-center">
+                                                            {isLoadingStats ? (
+                                                                <div className="flex items-center gap-1 text-[9px] text-gray-400 font-mono animate-pulse">
+                                                                    <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                                                                    Running...
+                                                                </div>
+                                                            ) : stats ? (
+                                                                <div
+                                                                    className="w-full cursor-pointer group relative"
+                                                                    onClick={() => handleViewOneShotDetails(session)}
+                                                                >
+                                                                    <div className="flex items-center gap-1 justify-center mb-0.5">
+                                                                        <span className={`text-xs font-black ${stats.overall_score >= 80 ? 'text-green-600' : 'text-black'}`}>
+                                                                            {stats.overall_score}%
+                                                                        </span>
+                                                                        {stats.overall_score >= 99 && <CheckCircle size={12} className="text-green-600" />}
+                                                                    </div>
+                                                                    <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden w-20 mx-auto border border-black/5">
+                                                                        <div
+                                                                            className={`h-full ${stats.overall_score > 80 ? 'bg-green-500' : stats.overall_score > 50 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                                                                            style={{ width: `${stats.overall_score}%` }}
+                                                                        ></div>
+                                                                    </div>
+                                                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors rounded-sm"></div>
+                                                                </div>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => loadOneShotStats(session.id)}
+                                                                    className="text-[9px] font-bold bg-white border border-black px-1.5 py-0.5 hover:bg-black hover:text-white transition-colors opacity-50 hover:opacity-100"
+                                                                >
+                                                                    RETRY
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-gray-300 text-xs">-</span>
                                                     )}
-                                                </div>
-                                            </td>
-                                            <td className="p-3 text-right">
-                                                {(session.file_change_count || 0) > 0 ? (
+                                                </td>
+                                                <td className="p-3 text-center">
                                                     <button
-                                                        onClick={() => handleViewChanges(session.id)}
-                                                        className="inline-flex items-center gap-1 bg-black text-white px-2 py-0.5 text-xs font-bold hover:bg-primary-yellow hover:text-black transition-colors"
+                                                        onClick={() => {
+                                                            setStatsSession(session);
+                                                            setStatsModalOpen(true);
+                                                        }}
+                                                        className="p-1 hover:bg-black hover:text-white transition-colors rounded-sm text-gray-400 hover:text-white"
+                                                        title="View Analytics"
                                                     >
-                                                        <FileText size={10} />
-                                                        {session.file_change_count}
+                                                        <Activity size={14} />
                                                     </button>
-                                                ) : (
-                                                    <span className="text-gray-300 text-xs">-</span>
-                                                )}
-                                            </td>
-                                            <td className="p-3 text-center">
-                                                <button
-                                                    onClick={() => {
-                                                        setStatsSession(session);
-                                                        setStatsModalOpen(true);
-                                                    }}
-                                                    className="p-1 hover:bg-black hover:text-white transition-colors rounded-sm text-gray-400 hover:text-white"
-                                                    title="View Analytics"
-                                                >
-                                                    <Activity size={14} />
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
+                                                </td>
+                                            </tr>
+                                        )
+                                    })}
                                 </tbody>
                             </table>
                         </div>
@@ -279,7 +387,15 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
                     session={statsSession}
                 />
             )}
+
+            {showDetailsSessionId && (
+                <OneShotDetailsModal
+                    isOpen={oneShotDetailsOpen}
+                    onClose={() => setOneShotDetailsOpen(false)}
+                    sessionId={showDetailsSessionId}
+                    stats={oneShotStats[showDetailsSessionId]}
+                />
+            )}
         </div>
     );
 };
-
