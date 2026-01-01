@@ -13,6 +13,10 @@ export const api = {
         const res = await fetch(`${API_BASE}/sessions/${sessionId}`);
         return res.json();
     },
+    getSessionChanges: async (sessionId: string) => {
+        const res = await fetch(`${API_BASE}/sessions/${sessionId}/changes`);
+        return res.json();
+    },
     search: async (query: string) => {
         const res = await fetch(`${API_BASE}/search?q=${encodeURIComponent(query)}`);
         return res.json();
@@ -63,6 +67,13 @@ export const api = {
         const res = await fetch(`${API_BASE}/configs/${path}`, {
             method: 'DELETE'
         });
+        return res.json();
+    },
+    getProjectDetails: async (projectName: string) => {
+        const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectName)}/details`);
+        if (!res.ok) {
+            throw new Error('Failed to fetch project details');
+        }
         return res.json();
     }
 };

@@ -3,6 +3,7 @@ import type { Message, Tag } from '../types';
 import { Sparkles } from 'lucide-react';
 import { MessageItem } from './MessageItem';
 import { TagManager } from './TagManager';
+import { ProjectDetails } from './ProjectDetails';
 
 interface ChatInterfaceProps {
     sessionId?: string;
@@ -12,6 +13,7 @@ interface ChatInterfaceProps {
     onTagsChange?: () => void;
     model?: string;
     totalTokens?: number;
+    selectedProject?: string | null;
 }
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -21,7 +23,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     loading,
     onTagsChange,
     model,
-    totalTokens
+    totalTokens,
+    selectedProject
 }) => {
     const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -31,18 +34,24 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
     if (loading) {
         return (
-            <div className="flex-1 flex flex-col items-center justify-center text-gray-400 bg-white">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600 mb-4"></div>
-                <span className="text-sm">Loading conversation...</span>
+            <div className="flex-1 flex flex-col items-center justify-center bg-white">
+                <div className="animate-spin h-12 w-12 border-4 border-black border-t-primary-blue rounded-full mb-6"></div>
+                <span className="text-lg font-bold font-mono uppercase tracking-widest">Loading...</span>
             </div>
         );
     }
 
     if (messages.length === 0) {
+        if (selectedProject) {
+            return <ProjectDetails projectName={selectedProject} />;
+        }
         return (
-            <div className="flex-1 flex flex-col items-center justify-center text-gray-300 bg-white">
-                <Sparkles size={48} className="mb-4 text-gray-200" />
-                <p>Select a session to start viewing</p>
+            <div className="flex-1 flex flex-col items-center justify-center bg-dots">
+                <div className="p-12 border-4 border-black bg-white shadow-hard-lg text-center transform -rotate-2">
+                    <Sparkles size={64} className="mb-6 text-primary-yellow mx-auto" strokeWidth={2} />
+                    <p className="text-2xl font-black uppercase tracking-tight mb-2">Ready to View</p>
+                    <p className="text-gray-500 font-medium">请选择一个会话开始浏览</p>
+                </div>
             </div>
         );
     }
@@ -50,28 +59,32 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     return (
         <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
             {sessionId && (
-                <div className="border-b border-gray-100 p-4 flex items-center justify-between bg-white flex-shrink-0 z-10">
-                    <div className="flex items-center gap-4">
-                        <div className="flex flex-col">
-                            <div className="font-mono text-sm text-gray-500">{sessionId}</div>
+                <div className="border-b-4 border-black p-4 flex items-center justify-between bg-gray-50 flex-shrink-0 z-10 shadow-sm">
+                    <div className="flex items-center gap-4 flex-wrap">
+                        <div className="flex flex-col gap-1">
+                            <div className="font-mono text-sm font-bold bg-black text-white px-3 py-1 inline-block shadow-hard-sm transform -rotate-1">
+                                {sessionId}
+                            </div>
                             {(model || totalTokens) && (
-                                <div className="flex items-center gap-2 text-[10px] text-gray-400 mt-0.5">
-                                    {model && <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-600 font-medium">{model}</span>}
-                                    {totalTokens && <span>• {totalTokens.toLocaleString()} tokens</span>}
+                                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider mt-1 ml-1">
+                                    {model && <span className="text-primary-blue">{model}</span>}
+                                    {totalTokens && <span className="text-gray-500">• {totalTokens.toLocaleString()} TOKENS</span>}
                                 </div>
                             )}
                         </div>
                         {onTagsChange && (
-                            <TagManager
-                                sessionId={sessionId}
-                                initialTags={initialTags}
-                                onTagsChange={onTagsChange}
-                            />
+                            <div className="ml-4 pl-4 border-l-2 border-black/10">
+                                <TagManager
+                                    sessionId={sessionId}
+                                    initialTags={initialTags}
+                                    onTagsChange={onTagsChange}
+                                />
+                            </div>
                         )}
                     </div>
                 </div>
             )}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto bg-white">
                 <div className="max-w-4xl mx-auto py-8 px-6 space-y-8">
                     {messages.map((msg, idx) => (
                         <MessageItem key={idx} msg={msg} />

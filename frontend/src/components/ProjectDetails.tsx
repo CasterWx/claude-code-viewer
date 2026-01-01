@@ -1,0 +1,285 @@
+import React, { useEffect, useState } from 'react';
+import type { ProjectDetails as ProjectDetailsType, Session } from '../types';
+import { api } from '../api';
+import { Folder, GitBranch, FileCode, Activity, MessageSquare, Database, FileText } from 'lucide-react';
+import { formatDateTime } from '../utils/formatDateTime';
+import { FileChangeModal } from './FileChangeModal';
+import { SessionStatsModal } from './SessionStatsModal';
+
+interface ProjectDetailsProps {
+    projectName: string;
+}
+
+export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) => {
+    const [details, setDetails] = useState<ProjectDetailsType | null>(null);
+    const [sessions, setSessions] = useState<Session[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    // Modal State
+    const [modalOpen, setModalOpen] = useState(false);
+    const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+    const [fileChanges, setFileChanges] = useState<any[]>([]);
+
+    // Details Modal State
+    const [statsModalOpen, setStatsModalOpen] = useState(false);
+    const [statsSession, setStatsSession] = useState<Session | null>(null);
+
+    const handleViewChanges = async (sessionId: string) => {
+        setSelectedSessionId(sessionId);
+        setFileChanges([]); // clear previous
+        setModalOpen(true);
+        try {
+            const changes = await api.getSessionChanges(sessionId);
+            setFileChanges(changes);
+        } catch (e) {
+            console.error("Failed to load changes", e);
+        }
+    };
+
+    useEffect(() => {
+        setLoading(true);
+        setError(null);
+        Promise.all([
+            api.getProjectDetails(projectName),
+            api.getSessions(projectName)
+        ])
+            .then(([detailsData, sessionsData]) => {
+                setDetails(detailsData);
+                setSessions(sessionsData);
+            })
+            .catch(err => setError(err.message))
+            .finally(() => setLoading(false));
+    }, [projectName]);
+
+    if (loading) {
+        return (
+            <div className="flex-1 flex items-center justify-center h-full bg-white">
+                <div className="animate-spin h-8 w-8 border-4 border-black border-t-primary-blue rounded-full"></div>
+            </div>
+        );
+    }
+
+    if (error || !details) {
+        return (
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-white">
+                <div className="text-primary-red font-bold text-xl mb-2">Error Loading Project</div>
+                <div className="text-gray-600">{error || "Project not found"}</div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex-1 h-full overflow-y-auto bg-dots p-8">
+            <div className="max-w-4xl mx-auto space-y-6">
+
+                {/* Header Card */}
+                <div className="bg-white border-4 border-black shadow-hard-lg p-6 relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4 opacity-10">
+                        <Folder size={120} strokeWidth={1} />
+                    </div>
+                    <h1 className="text-4xl font-black mb-2 uppercase tracking-tight">{details.name}</h1>
+                    <div className="flex items-center text-gray-600 font-mono text-sm bg-gray-100 p-2 border-2 border-black inline-block">
+                        <Folder size={16} className="mr-2" />
+                        {details.path || "Path not available"}
+                    </div>
+                </div>
+
+                {/* Git & Status Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Git Info */}
+                    <div className={`
+                        bg-white border-4 border-black shadow-hard-md p-6
+                        ${details.git.is_repo ? '' : 'opacity-75'}
+                    `}>
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className="text-xl font-bold uppercase flex items-center gap-2">
+                                <GitBranch className="text-primary-red" />
+                                Git Status
+                            </h2>
+                            {details.git.is_repo && (
+                                <span className="bg-primary-red text-white text-xs font-bold px-2 py-1 rounded-sm border-2 border-black">
+                                    ACTIVE
+                                </span>
+                            )}
+                        </div>
+                        {details.git.is_repo ? (
+                            <div className="font-mono text-lg font-bold">
+                                On branch <span className="text-primary-blue">{details.git.branch}</span>
+                            </div>
+                        ) : (
+                            <div className="text-gray-500 italic">Not a git repository</div>
+                        )}
+                    </div>
+
+                    {/* Stats Summary */}
+                    <div className="bg-white border-4 border-black shadow-hard-md p-6">
+                        <h2 className="text-xl font-bold uppercase flex items-center gap-2 mb-4">
+                            <Activity className="text-primary-yellow" />
+                            Activity Overview
+                        </h2>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <div className="text-gray-500 text-xs font-bold uppercase">Sessions</div>
+                                <div className="text-2xl font-black flex items-center gap-2">
+                                    <MessageSquare size={20} className="text-gray-400" />
+                                    {details.stats.sessions}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-gray-500 text-xs font-bold uppercase">Tokens</div>
+                                <div className="text-2xl font-black flex items-center gap-2">
+                                    <Database size={20} className="text-gray-400" />
+                                    {(details.stats.tokens / 1000).toFixed(1)}k
+                                </div>
+                            </div>
+                            <div className="col-span-2">
+                                <div className="text-gray-500 text-xs font-bold uppercase">Last Active</div>
+                                <div className="font-mono text-sm border-t-2 border-dashed border-gray-200 pt-1 mt-1">
+                                    {details.stats.last_active ? new Date(details.stats.last_active).toLocaleString() : 'Never'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Configurations */}
+                <div className="bg-white border-4 border-black shadow-hard-md p-6">
+                    <h2 className="text-xl font-bold uppercase flex items-center gap-2 mb-4">
+                        <FileCode className="text-primary-blue" />
+                        Configuration Files
+                    </h2>
+                    {details.configs.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {details.configs.map((config, idx) => (
+                                <div key={idx} className="flex items-center gap-3 p-3 border-2 border-black hover:bg-yellow-50 transition-colors cursor-default">
+                                    <div className="w-8 h-8 bg-black text-primary-yellow flex items-center justify-center font-bold">
+                                        JS
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="font-bold truncate">{config.name}</div>
+                                        <div className="text-xs text-gray-500 truncate" title={config.path}>{config.path}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-gray-500 italic p-4 text-center border-2 border-dashed border-gray-300">
+                            No .claude configuration files found
+                        </div>
+                    )}
+                </div>
+
+                {/* Session List Table */}
+                <div className="bg-white border-4 border-black shadow-hard-md p-6">
+                    <h2 className="text-xl font-bold uppercase flex items-center gap-2 mb-4">
+                        <MessageSquare className="text-primary-red" />
+                        Session History
+                    </h2>
+
+                    {sessions.length > 0 ? (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b-4 border-black bg-gray-50">
+                                        <th className="p-3 text-left">Session ID</th>
+                                        <th className="p-3 text-left">Started</th>
+                                        <th className="p-3 text-left">Model</th>
+                                        <th className="p-3 text-right">Turns</th>
+                                        <th className="p-3 text-right">Tokens (I/O)</th>
+                                        <th className="p-3 text-right">Files Changed</th>
+                                        <th className="p-3 text-center">Activity</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {sessions.map((session) => (
+                                        <tr key={session.id} className="border-b border-gray-200 hover:bg-yellow-50 transition-colors">
+                                            <td className="p-3 font-mono text-sm">
+                                                <div className="flex flex-col">
+                                                    <span className="font-bold">{session.id.substring(0, 8)}...</span>
+                                                    {session.branch && (
+                                                        <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                                                            <GitBranch size={8} /> {session.branch}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="p-3 text-sm text-gray-600">
+                                                {formatDateTime(session.start_time)}
+                                            </td>
+                                            <td className="p-3 text-sm">
+                                                <span className="bg-gray-100 px-2 py-0.5 text-xs border border-gray-300">
+                                                    {session.model?.split(':')[0] || 'Unknown'}
+                                                </span>
+                                            </td>
+                                            <td className="p-3 text-right font-mono text-sm">
+                                                {session.turns || '-'}
+                                            </td>
+                                            <td className="p-3 text-right text-sm">
+                                                <div className="flex flex-col items-end text-xs">
+                                                    <span className="font-bold">{(session.total_tokens || 0).toLocaleString()}</span>
+                                                    {session.input_tokens !== undefined && (
+                                                        <span className="text-gray-400">
+                                                            {(session.input_tokens / 1000).toFixed(1)}k / {(session.output_tokens || 0) / 1000 > 0 ? ((session.output_tokens || 0) / 1000).toFixed(1) + 'k' : '0'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="p-3 text-right">
+                                                {(session.file_change_count || 0) > 0 ? (
+                                                    <button
+                                                        onClick={() => handleViewChanges(session.id)}
+                                                        className="inline-flex items-center gap-1 bg-black text-white px-2 py-0.5 text-xs font-bold hover:bg-primary-yellow hover:text-black transition-colors"
+                                                    >
+                                                        <FileText size={10} />
+                                                        {session.file_change_count}
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-gray-300 text-xs">-</span>
+                                                )}
+                                            </td>
+                                            <td className="p-3 text-center">
+                                                <button
+                                                    onClick={() => {
+                                                        setStatsSession(session);
+                                                        setStatsModalOpen(true);
+                                                    }}
+                                                    className="p-1 hover:bg-black hover:text-white transition-colors rounded-sm text-gray-400 hover:text-white"
+                                                    title="View Analytics"
+                                                >
+                                                    <Activity size={14} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : (
+                        <div className="text-gray-500 italic p-8 text-center border-2 border-dashed border-gray-300 bg-gray-50">
+                            No sessions found for this project.
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {selectedSessionId && (
+                <FileChangeModal
+                    isOpen={modalOpen}
+                    onClose={() => setModalOpen(false)}
+                    sessionId={selectedSessionId}
+                    changes={fileChanges}
+                />
+            )}
+
+            {statsSession && (
+                <SessionStatsModal
+                    isOpen={statsModalOpen}
+                    onClose={() => setStatsModalOpen(false)}
+                    session={statsSession}
+                />
+            )}
+        </div>
+    );
+};
+

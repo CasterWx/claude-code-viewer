@@ -37,16 +37,27 @@ async def startup_event():
     for session_info in parser.scan_projects():
         result = parser.parse_session(session_info['file_path'])
         if result['messages']:
-            storage.save_session(session_info['project'], session_info, result['messages'], result['metadata'])
+            storage.save_session(session_info['project'], session_info, result['messages'], result['metadata'], project_path=session_info.get('project_path'))
     logger.info("Scan complete.")
 
 @app.get("/api/projects")
 def get_projects():
     return storage.get_projects()
 
+@app.get("/api/projects/{project_name}/details")
+def get_project_details(project_name: str):
+    details = analytics.get_project_details(project_name)
+    if not details:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return details
+
 @app.get("/api/projects/{project_name}/sessions")
 def get_sessions(project_name: str):
     return storage.get_sessions(project_name)
+
+@app.get("/api/sessions/{session_id}/changes")
+def get_session_changes(session_id: str):
+    return analytics.get_session_changes(session_id)
 
 @app.get("/api/sessions/{session_id}")
 def get_session(session_id: str):

@@ -61,15 +61,17 @@ export const Settings: React.FC = () => {
     };
 
     const renderFileList = (files: ConfigFile[]) => (
-        <div className="space-y-1">
+        <div className="space-y-2">
             {files.map(file => (
                 <button
                     key={file.path}
                     onClick={() => loadFile(file.path)}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${selectedFile === file.path
-                            ? 'bg-purple-100 text-purple-900 font-medium'
-                            : 'hover:bg-gray-100 text-gray-700'
-                        }`}
+                    className={`
+                        w-full text-left px-4 py-3 border-2 border-black font-medium transition-all duration-200
+                        ${selectedFile === file.path
+                            ? 'bg-primary-yellow text-black shadow-[4px_4px_0px_0px_black] translate-x-[-2px] translate-y-[-2px]'
+                            : 'bg-white hover:bg-gray-50 hover:shadow-hard-sm'}
+                    `}
                 >
                     {file.name}
                 </button>
@@ -80,61 +82,80 @@ export const Settings: React.FC = () => {
     if (loading && !configs) {
         return (
             <div className="flex-1 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                <div className="animate-spin h-8 w-8 border-4 border-black border-t-primary-yellow rounded-full"></div>
             </div>
         );
     }
 
     return (
-        <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
-            <div className="border-b border-gray-200 p-6">
-                <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
-                    <SettingsIcon className="w-7 h-7 text-purple-600" />
-                    Settings
+        <div className="flex-1 flex flex-col h-full overflow-hidden bg-background">
+            <div className="border-b-4 border-black p-6 bg-white">
+                <h1 className="text-3xl font-black uppercase tracking-tighter text-black flex items-center gap-3">
+                    <div className="w-10 h-10 bg-black text-white flex items-center justify-center shadow-hard-sm">
+                        <SettingsIcon strokeWidth={3} className="w-5 h-5" />
+                    </div>
+                    设置 (Settings)
                 </h1>
             </div>
 
             <div className="flex-1 flex overflow-hidden">
                 {/* Sidebar */}
-                <div className="w-64 border-r border-gray-200 p-4 overflow-y-auto">
-                    <div className="space-y-1">
+                <div className="w-72 border-r-4 border-black p-4 overflow-y-auto bg-gray-50">
+                    <div className="space-y-2">
                         <button
                             onClick={() => { setActiveTab('settings'); setSelectedFile(null); }}
-                            className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'settings' ? 'bg-purple-100 text-purple-900 font-medium' : 'hover:bg-gray-100'
-                                }`}
+                            className={`
+                                w-full text-left px-4 py-3 border-2 border-black font-bold uppercase tracking-wider flex items-center gap-3 transition-all
+                                ${activeTab === 'settings'
+                                    ? 'bg-primary-blue text-white shadow-hard-sm'
+                                    : 'bg-white hover:bg-gray-100'}
+                            `}
                         >
-                            <FileText className="w-4 h-4" />
-                            Global Settings
+                            <FileText className="w-5 h-5" strokeWidth={2.5} />
+                            全局配置
                         </button>
                         <button
                             onClick={() => { setActiveTab('agents'); setSelectedFile(null); }}
-                            className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'agents' ? 'bg-purple-100 text-purple-900 font-medium' : 'hover:bg-gray-100'
-                                }`}
+                            className={`
+                                w-full text-left px-4 py-3 border-2 border-black font-bold uppercase tracking-wider flex items-center gap-3 transition-all
+                                ${activeTab === 'agents'
+                                    ? 'bg-primary-red text-white shadow-hard-sm'
+                                    : 'bg-white hover:bg-gray-100'}
+                            `}
                         >
-                            <Users className="w-4 h-4" />
-                            Agents
+                            <Users className="w-5 h-5" strokeWidth={2.5} />
+                            智能体 (Agents)
                         </button>
                         <button
                             onClick={() => { setActiveTab('commands'); setSelectedFile(null); }}
-                            className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'commands' ? 'bg-purple-100 text-purple-900 font-medium' : 'hover:bg-gray-100'
-                                }`}
+                            className={`
+                                w-full text-left px-4 py-3 border-2 border-black font-bold uppercase tracking-wider flex items-center gap-3 transition-all
+                                ${activeTab === 'commands'
+                                    ? 'bg-primary-yellow text-black shadow-hard-sm'
+                                    : 'bg-white hover:bg-gray-100'}
+                            `}
                         >
-                            <Terminal className="w-4 h-4" />
-                            Commands
+                            <Terminal className="w-5 h-5" strokeWidth={2.5} />
+                            指令 (Commands)
                         </button>
                         <button
                             onClick={() => { setActiveTab('claude'); setSelectedFile(null); }}
-                            className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 transition-colors ${activeTab === 'claude' ? 'bg-purple-100 text-purple-900 font-medium' : 'hover:bg-gray-100'
-                                }`}
+                            className={`
+                                w-full text-left px-4 py-3 border-2 border-black font-bold uppercase tracking-wider flex items-center gap-3 transition-all
+                                ${activeTab === 'claude'
+                                    ? 'bg-foreground text-white shadow-hard-sm'
+                                    : 'bg-white hover:bg-gray-100'}
+                            `}
                         >
-                            <FileText className="w-4 h-4" />
-                            Global Instructions
+                            <FileText className="w-5 h-5" strokeWidth={2.5} />
+                            全局指令 (CLAUDE.md)
                         </button>
                     </div>
 
                     {/* File List */}
                     {configs && (
-                        <div className="mt-6">
+                        <div className="mt-8 border-t-4 border-black pt-6">
+                            <h3 className="text-xs font-black uppercase tracking-widest mb-4 text-gray-500 px-1">Configs List</h3>
                             {activeTab === 'settings' && renderFileList(configs.files.filter(f => f.name === 'settings.json'))}
                             {activeTab === 'agents' && configs.directories.agents && renderFileList(configs.directories.agents)}
                             {activeTab === 'commands' && configs.directories.commands && renderFileList(configs.directories.commands)}
@@ -144,47 +165,52 @@ export const Settings: React.FC = () => {
                 </div>
 
                 {/* Content Editor */}
-                <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="flex-1 flex flex-col overflow-hidden bg-white">
                     {selectedFile ? (
                         <>
-                            <div className="flex items-center justify-between px-6 py-3 bg-gray-50 border-b border-gray-200">
+                            <div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-b-4 border-black">
                                 <div className="flex items-center gap-3">
-                                    <span className="text-sm font-medium text-gray-700">{selectedFile}</span>
-                                    {hasChanges && <span className="text-xs text-orange-600 font-medium">● Unsaved changes</span>}
+                                    <span className="text-lg font-bold font-mono text-black">{selectedFile}</span>
+                                    {hasChanges && (
+                                        <span className="bg-primary-red text-white text-xs font-bold px-2 py-1 border-2 border-black shadow-hard-sm">
+                                            ● 未保存
+                                        </span>
+                                    )}
                                 </div>
-                                <div className="flex gap-2">
+                                <div className="flex gap-3">
                                     <button
                                         onClick={() => loadFile(selectedFile)}
-                                        className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 flex items-center gap-1"
+                                        className="px-4 py-2 border-2 border-black bg-white hover:bg-gray-100 font-bold text-sm shadow-hard-sm active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all flex items-center gap-2"
                                         disabled={saving}
                                     >
-                                        <RefreshCw className="w-3.5 h-3.5" />
-                                        Reload
+                                        <RefreshCw className="w-4 h-4" />
+                                        重载
                                     </button>
                                     <button
                                         onClick={saveFile}
                                         disabled={!hasChanges || saving}
-                                        className="px-4 py-1.5 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                        className="px-6 py-2 border-2 border-black bg-primary-green text-white font-bold text-sm shadow-hard-sm hover:-translate-y-0.5 hover:shadow-hard-md active:shadow-none active:translate-x-[2px] active:translate-y-[2px] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                                     >
-                                        <Save className="w-3.5 h-3.5" />
-                                        {saving ? 'Saving...' : 'Save'}
+                                        <Save className="w-4 h-4" />
+                                        {saving ? '保存中...' : '保存'}
                                     </button>
                                 </div>
                             </div>
-                            <div className="flex-1 overflow-hidden">
+                            <div className="flex-1 overflow-hidden relative">
                                 <textarea
                                     value={content}
                                     onChange={(e) => handleContentChange(e.target.value)}
-                                    className="w-full h-full p-6 font-mono text-sm resize-none focus:outline-none"
+                                    className="w-full h-full p-8 font-mono text-sm resize-none focus:outline-none bg-[#f8f9fa] text-gray-800 leading-relaxed"
                                     spellCheck={false}
                                 />
                             </div>
                         </>
                     ) : (
-                        <div className="flex-1 flex items-center justify-center text-gray-400">
-                            <div className="text-center">
-                                <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                                <p>Select a file to edit</p>
+                        <div className="flex-1 flex items-center justify-center text-gray-400 bg-dots">
+                            <div className="text-center p-8 border-4 border-black bg-white shadow-hard-lg">
+                                <FileText className="w-16 h-16 mx-auto mb-4 text-black" strokeWidth={1.5} />
+                                <p className="font-bold text-xl text-black">请选择文件进行编辑</p>
+                                <p className="text-sm text-gray-500 mt-2">Select a file to edit</p>
                             </div>
                         </div>
                     )}

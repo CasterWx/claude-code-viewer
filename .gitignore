@@ -1,8 +1,11 @@
 # Logs
 
 node_modules
-build
+build/
+claude_viewer.egg-info/
 claude-code-viewer.db
+claude_logs.db
+dist/
 
 frontend/node_modules
 frontend/dist

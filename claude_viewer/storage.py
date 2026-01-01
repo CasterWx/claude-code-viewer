@@ -19,6 +19,7 @@ class Storage:
         # Projects table
         c.execute('''CREATE TABLE IF NOT EXISTS projects (
             name TEXT PRIMARY KEY,
+            path TEXT,
             last_updated TIMESTAMP
         )''')
         
@@ -43,6 +44,29 @@ class Storage:
             c.execute("ALTER TABLE sessions ADD COLUMN total_tokens INTEGER")
         except sqlite3.OperationalError:
             pass # Column exists
+
+        try:
+            c.execute("ALTER TABLE sessions ADD COLUMN file_change_count INTEGER DEFAULT 0")
+        except sqlite3.OperationalError:
+            pass # Column exists
+
+        try:
+            c.execute("ALTER TABLE projects ADD COLUMN path TEXT")
+        except sqlite3.OperationalError:
+            pass # Column exists
+
+        # New columns for Session details
+        for col, type_ in [
+            ("input_tokens", "INTEGER DEFAULT 0"),
+            ("output_tokens", "INTEGER DEFAULT 0"),
+            ("turns", "INTEGER DEFAULT 0"),
+            ("branch", "TEXT"),
+            ("token_usage_history", "TEXT")
+        ]:
+            try:
+                c.execute(f"ALTER TABLE sessions ADD COLUMN {col} {type_}")
+            except sqlite3.OperationalError:
+                pass
         
         # Messages table with FTS
         c.execute('''CREATE TABLE IF NOT EXISTS messages (
@@ -79,7 +103,7 @@ class Storage:
         conn.commit()
         conn.close()
 
-    def save_session(self, project_name: str, session_data: Dict[str, Any], messages: List[Dict[str, Any]], metadata: Dict[str, Any] = None):
+    def save_session(self, project_name: str, session_data: Dict[str, Any], messages: List[Dict[str, Any]], metadata: Dict[str, Any] = None, project_path: str = None):
         """Save a session and its messages to the DB."""
         if metadata is None:
             metadata = {}
@@ -88,15 +112,33 @@ class Storage:
         c = conn.cursor()
         
         # Insert/Update Project
-        c.execute("INSERT OR IGNORE INTO projects (name, last_updated) VALUES (?, datetime('now'))", (project_name,))
+        c.execute("INSERT OR IGNORE INTO projects (name, path, last_updated) VALUES (?, ?, datetime('now'))", (project_name, project_path))
+        if project_path:
+             c.execute("UPDATE projects SET path = ?, last_updated = datetime('now') WHERE name = ?", (project_path, project_name))
+        else:
+             c.execute("UPDATE projects SET last_updated = datetime('now') WHERE name = ?", (project_name,))
         
         # Insert/Update Session
-        c.execute("INSERT OR REPLACE INTO sessions (id, project_name, file_path, start_time, model, total_tokens) VALUES (?, ?, ?, ?, ?, ?)", 
-                  (session_data['session_id'], project_name, session_data['file_path'], 
-                   messages[0]['timestamp'] if messages else None,
-                   metadata.get('model'),
-                   metadata.get('total_tokens', 0)
-                  ))
+        c.execute("""
+            INSERT OR REPLACE INTO sessions (
+                id, project_name, file_path, start_time, model, 
+                total_tokens, input_tokens, output_tokens, turns, branch, token_usage_history,
+                file_change_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            session_data['session_id'], 
+            project_name, 
+            session_data['file_path'], 
+            messages[0]['timestamp'] if messages else None,
+            metadata.get('model'),
+            metadata.get('total_tokens', 0),
+            metadata.get('input_tokens', 0),
+            metadata.get('output_tokens', 0),
+            metadata.get('turns', 0),
+            metadata.get('branch'),
+            json.dumps(metadata.get('token_usage_history', [])),
+            metadata.get('file_change_count', 0)
+        ))
         
         # Insert Messages
         # For simplicity, we might wipe old messages for this session and re-insert, or check duplicates.
@@ -123,12 +165,14 @@ class Storage:
         sql = '''
             SELECT 
                 p.name, 
-                p.last_updated,
+                p.path,
+                MAX(s.start_time) as last_updated,
                 COUNT(s.id) as session_count
             FROM projects p
             LEFT JOIN sessions s ON p.name = s.project_name
             GROUP BY p.name
-            ORDER BY p.last_updated DESC
+            HAVING COUNT(s.id) > 0
+            ORDER BY last_updated DESC
         '''
         c.execute(sql)
         projects = [dict(row) for row in c.fetchall()]

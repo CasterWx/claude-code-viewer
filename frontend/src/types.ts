@@ -18,6 +18,12 @@ export interface Session {
     tags?: Tag[];
     model?: string;
     total_tokens?: number;
+    file_change_count?: number;
+    input_tokens?: number;
+    output_tokens?: number;
+    turns?: number;
+    branch?: string;
+    token_usage_history?: string; // JSON string
 }
 
 export interface Message {
@@ -36,6 +42,30 @@ export interface AnalyticsData {
     total_projects: number;
     total_sessions: number;
     total_messages: number;
-    daily_activity: { date: string; count: number }[];
+    total_tokens: number;
+    most_used_model: string;
+    daily_activity: { date: string; count: number; sessions: number; projects: number }[];
     tag_stats: { name: string; color: string; sessions: number; messages: number }[];
+    model_stats: { model: string; count: number }[];
+    hourly_activity: { hour: number; count: number }[];
+}
+
+export interface ProjectDetails {
+    name: string;
+    path: string | null;
+    last_updated: string | null;
+    stats: {
+        sessions: number;
+        messages: number;
+        tokens: number;
+        last_active: string | null;
+    };
+    git: {
+        is_repo: boolean;
+        branch: string | null;
+    };
+    configs: {
+        name: string;
+        path: string;
+    }[];
 }

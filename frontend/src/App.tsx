@@ -70,35 +70,55 @@ function AppContent() {
 
   return (
     <div className="flex h-screen bg-white">
-      <aside className="w-16 bg-gray-900 flex flex-col items-center py-4 gap-2 text-white">
+      <aside className="w-20 bg-foreground flex flex-col items-center py-6 gap-6 text-white border-r-4 border-black z-10 shadow-hard-lg">
         <button
           onClick={() => setView('dashboard')}
-          className={`p-3 rounded-xl transition-colors ${view === 'dashboard' ? 'bg-purple-600' : 'hover:bg-gray-800 text-gray-400'}`}
-          title="Dashboard"
+          className={`
+            w-12 h-12 flex items-center justify-center transition-all duration-200 border-2 border-transparent
+            ${view === 'dashboard'
+              ? 'bg-primary-yellow text-black shadow-[4px_4px_0px_0px_white] translate-x-[-2px] translate-y-[-2px]'
+              : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:border-white'}
+          `}
+          title="仪表盘"
         >
-          <LayoutDashboard size={24} />
+          <LayoutDashboard size={24} strokeWidth={2.5} />
         </button>
         <button
           onClick={() => setView('chat')}
-          className={`p-3 rounded-xl transition-colors ${view === 'chat' ? 'bg-purple-600' : 'hover:bg-gray-800 text-gray-400'}`}
-          title="Projects"
+          className={`
+            w-12 h-12 flex items-center justify-center transition-all duration-200 border-2 border-transparent
+            ${view === 'chat'
+              ? 'bg-primary-blue text-white shadow-[4px_4px_0px_0px_white] translate-x-[-2px] translate-y-[-2px]'
+              : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:border-white'}
+          `}
+          title="项目与会话"
         >
-          <Folder size={24} />
+          <Folder size={24} strokeWidth={2.5} />
         </button>
         <button
           onClick={() => setView('search')}
-          className={`p-3 rounded-xl transition-colors ${view === 'search' ? 'bg-purple-600' : 'hover:bg-gray-800 text-gray-400'}`}
-          title="Search"
+          className={`
+            w-12 h-12 flex items-center justify-center transition-all duration-200 border-2 border-transparent
+            ${view === 'search'
+              ? 'bg-primary-red text-white shadow-[4px_4px_0px_0px_white] translate-x-[-2px] translate-y-[-2px]'
+              : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:border-white'}
+          `}
+          title="搜索"
         >
-          <SearchIcon size={24} />
+          <SearchIcon size={24} strokeWidth={2.5} />
         </button>
         <div className="flex-1" />
         <button
           onClick={() => setView('settings')}
-          className={`p-3 rounded-xl transition-colors ${view === 'settings' ? 'bg-purple-600' : 'hover:bg-gray-800 text-gray-400'}`}
-          title="Settings"
+          className={`
+            w-12 h-12 flex items-center justify-center transition-all duration-200 border-2 border-transparent
+            ${view === 'settings'
+              ? 'bg-white text-black shadow-[4px_4px_0px_0px_#F0C020] translate-x-[-2px] translate-y-[-2px]'
+              : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:border-white'}
+          `}
+          title="设置"
         >
-          <SettingsIcon size={24} />
+          <SettingsIcon size={24} strokeWidth={2.5} />
         </button>
       </aside>
 
@@ -108,24 +128,32 @@ function AppContent() {
           sessions={sessions}
           selectedProject={selectedProject}
           selectedSessionId={selectedSessionId}
-          onSelectProject={handleSelectProject}
-          onSelectSession={handleSelectSession}
-          onTagsChange={handleTagsChange}
+          onProjectSelect={handleSelectProject}
+          onSessionSelect={handleSelectSession}
+          onTagToggle={() => { }} // Placeholder
+          loading={loading}
         />
       )}
 
-      <main className="flex-1 flex flex-col overflow-hidden bg-white">
+      <main className="flex-1 flex flex-col overflow-hidden bg-background relative z-0">
+        {/* Decorative background pattern */}
+        <div className="absolute inset-0 opacity-5 pointer-events-none z-[-1]"
+          style={{ backgroundImage: 'radial-gradient(#000 2px, transparent 2px)', backgroundSize: '24px 24px' }}>
+        </div>
         {view === 'dashboard' && <Dashboard />}
         {view === 'chat' && (
-          <ChatInterface
-            messages={messages}
-            loading={loading}
-            sessionId={selectedSessionId || undefined}
-            initialTags={currentSession?.tags}
-            onTagsChange={handleTagsChange}
-            model={currentSession?.model}
-            totalTokens={currentSession?.total_tokens}
-          />
+          <div className="flex-1 h-full shadow-hard-lg m-4 border-4 border-black bg-white overflow-hidden">
+            <ChatInterface
+              messages={messages}
+              loading={loading}
+              sessionId={selectedSessionId || undefined}
+              initialTags={currentSession?.tags}
+              onTagsChange={handleTagsChange}
+              model={currentSession?.model}
+              totalTokens={currentSession?.total_tokens}
+              selectedProject={selectedProject}
+            />
+          </div>
         )}
         {view === 'search' && (
           <Search onResultClick={handleSearchResultClick} />
