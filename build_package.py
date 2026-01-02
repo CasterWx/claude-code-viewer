@@ -21,7 +21,7 @@ def build():
         # Install dependencies if node_modules doesn't exist
         if not (frontend_dir / "node_modules").exists():
             print("Installing frontend dependencies...")
-            subprocess.run(["npm", "install"], cwd=frontend_dir, check=True)
+            subprocess.run(["npm", "install", "--legacy-peer-deps"], cwd=frontend_dir, check=True)
             
         # Build
         print("Running npm build...")
