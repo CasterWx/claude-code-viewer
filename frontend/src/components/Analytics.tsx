@@ -122,7 +122,14 @@ export const Analytics: React.FC = () => {
     );
 };
 
-const StatCard = ({ label, value, icon, color }: any) => (
+interface StatCardProps {
+    label: string;
+    value: number | string;
+    icon: React.ReactNode;
+    color: string;
+}
+
+const StatCard = ({ label, value, icon, color }: StatCardProps) => (
     <div className="bg-white p-5 rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.04)] border border-gray-100 flex items-center justify-between">
         <div>
             <div className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">{label}</div>

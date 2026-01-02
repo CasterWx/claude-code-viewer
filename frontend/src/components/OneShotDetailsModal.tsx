@@ -56,7 +56,7 @@ export const OneShotDetailsModal: React.FC<OneShotDetailsModalProps> = ({
             const splitPaths = strs.map(s => s.split('/'));
             const minLength = Math.min(...splitPaths.map(p => p.length));
 
-            let commonParts: string[] = [];
+            const commonParts: string[] = [];
             for (let i = 0; i < minLength - 1; i++) { // -1 to keep at least filename
                 const part = splitPaths[0][i];
                 if (splitPaths.every(p => p[i] === part)) {

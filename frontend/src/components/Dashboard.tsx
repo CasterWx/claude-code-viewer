@@ -14,11 +14,19 @@ export const Dashboard: React.FC = () => {
     const dashboardRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        setLoading(true);
-        api.getDashboard().then(res => {
-            setData(res);
-            setLoading(false);
-        });
+        // Only fetch if data is not present to avoid strict mode double fetch if not needed
+        // But here we want to fetch on mount.
+        // setLoader moved inside async to avoid sync setState warning if strict mode rendering catches it
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                const res = await api.getDashboard();
+                setData(res);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
     }, []);
 
     const availableYears = useMemo(() => {
@@ -31,7 +39,11 @@ export const Dashboard: React.FC = () => {
 
     useEffect(() => {
         if (availableYears.length > 0) {
-            setSelectedYear(availableYears[0]);
+            // Check if we need to update selectedYear to avoid loop
+            setSelectedYear(prev => {
+                const newest = availableYears[0];
+                return availableYears.includes(prev) ? prev : newest;
+            });
         }
     }, [availableYears]);
 
@@ -47,7 +59,7 @@ export const Dashboard: React.FC = () => {
             weeklyCounts[date.getDay()] += d.count;
         });
         const maxWeekly = Math.max(...weeklyCounts, 1);
-        const weeklyStats = days.map((day, i) => ({
+        const wStats = days.map((day, i) => ({
             day,
             count: weeklyCounts[i],
             height: (weeklyCounts[i] / maxWeekly) * 100
@@ -55,7 +67,7 @@ export const Dashboard: React.FC = () => {
 
         // Hourly Activity (Clock)
         const maxHourly = Math.max(...(data.hourly_activity.map(h => h.count) || [0]), 1);
-        const hourlyStats = data.hourly_activity.map(h => ({
+        const hStats = data.hourly_activity.map(h => ({
             ...h,
             intensity: h.count / maxHourly,
             angle: h.hour * 15 // 0 = Top (0deg), 6 = Right (90deg), etc.
@@ -64,7 +76,7 @@ export const Dashboard: React.FC = () => {
         // Model Distribution (Doughnut)
         const totalModels = data.model_stats.reduce((acc, curr) => acc + curr.count, 0) || 1;
         let currentAngle = 0;
-        const modelStatsProcessed = data.model_stats
+        const mStats = data.model_stats
             .sort((a, b) => b.count - a.count)
             .map((m, i) => {
                 const percentage = m.count / totalModels;
@@ -80,9 +92,9 @@ export const Dashboard: React.FC = () => {
                 };
             });
 
-        const maxDaily = Math.max(...(data.daily_activity.map(d => d.count) || [0]), 1);
+        const mDaily = Math.max(...(data.daily_activity.map(d => d.count) || [0]), 1);
 
-        return { weeklyStats, hourlyStats, modelStatsProcessed, maxDaily };
+        return { weeklyStats: wStats, hourlyStats: hStats, modelStatsProcessed: mStats, maxDaily: mDaily };
     }, [data]);
 
     const handleExport = async () => {
@@ -124,7 +136,7 @@ export const Dashboard: React.FC = () => {
     startDate.setDate(startDate.getDate() - startDate.getDay());
     const endDate = new Date(yearEnd);
     endDate.setDate(endDate.getDate() + (6 - endDate.getDay()));
-    let iterDate = new Date(startDate);
+    const iterDate = new Date(startDate);
     while (iterDate <= endDate) {
         const dateStr = iterDate.toISOString().split('T')[0];
         currentWeek.push({

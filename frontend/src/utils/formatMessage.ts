@@ -62,7 +62,7 @@ export const formatMessageContent = (content: string): string => {
                         break;
                     case 'TodoWrite':
                         if (args.todos) {
-                            const todoList = args.todos.map((t: any) => {
+                            const todoList = args.todos.map((t: { status: string; content: string }) => {
                                 const mark = t.status === 'completed' ? '✅' : t.status === 'in_progress' ? '🔄' : '⬜';
                                 return `- ${mark} ${t.content}`;
                             }).join('\n');
@@ -91,7 +91,7 @@ export const formatMessageContent = (content: string): string => {
                     case 'Glob':
                         return `\n**Tool Use: Glob**\n> Finding files matching \`${args.pattern}\` in \`${args.path || '.'}\`\n`;
                 }
-            } catch (e) {
+            } catch {
                 // Ignore parse errors, fall back to default
             }
 

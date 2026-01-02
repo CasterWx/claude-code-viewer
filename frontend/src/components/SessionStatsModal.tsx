@@ -15,12 +15,13 @@ export const SessionStatsModal: React.FC<SessionStatsModalProps> = ({ isOpen, on
         if (!session.token_usage_history) return [];
         try {
             const history = JSON.parse(session.token_usage_history);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return history.map((h: any, i: number) => ({
                 name: `Turn ${i + 1}`,
-                input: h.input,
-                output: h.output,
-                total: h.total,
-                time: new Date(h.timestamp).toLocaleTimeString()
+                input: h.input || 0,
+                output: h.output || 0,
+                total: h.total || 0,
+                time: h.timestamp ? new Date(h.timestamp).toLocaleTimeString() : ''
             }));
         } catch (e) {
             console.error("Failed to parse token history", e);

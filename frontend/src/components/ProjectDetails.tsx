@@ -1,6 +1,6 @@
 
-import React, { useEffect, useState, useRef } from 'react';
-import type { ProjectDetails as ProjectDetailsType, Session } from '../types';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import type { ProjectDetails as ProjectDetailsType, Session, FileChange } from '../types';
 import { api } from '../api';
 import { Folder, GitBranch, FileCode, Activity, MessageSquare, Database, FileText, CheckCircle } from 'lucide-react';
 import { formatDateTime } from '../utils/formatDateTime';
@@ -33,7 +33,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
     // Modal State
     const [modalOpen, setModalOpen] = useState(false);
     const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-    const [fileChanges, setFileChanges] = useState<any[]>([]);
+    const [fileChanges, setFileChanges] = useState<FileChange[]>([]);
 
     // Details Modal State
     const [statsModalOpen, setStatsModalOpen] = useState(false);
@@ -50,19 +50,22 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
     // Track if we've already triggered auto-load for the current session list
     const autoLoadTriggered = useRef(false);
 
-    const loadOneShotStats = async (sessionId: string) => {
+    const loadOneShotStats = useCallback(async (sessionId: string): Promise<void> => {
         if (loadingStats[sessionId] || oneShotStats[sessionId]) return;
 
         setLoadingStats(prev => ({ ...prev, [sessionId]: true }));
         try {
             const stats = await api.getOneShotStats(sessionId, ['md', 'txt']);
-            setOneShotStats(prev => ({ ...prev, [sessionId]: stats }));
+            setOneShotStats(prev => ({
+                ...prev,
+                [sessionId]: stats
+            }));
         } catch (e) {
-            console.error(e);
+            console.error(`Failed to load stats for ${sessionId}`, e);
         } finally {
             setLoadingStats(prev => ({ ...prev, [sessionId]: false }));
         }
-    };
+    }, [loadingStats, oneShotStats, setLoadingStats, setOneShotStats]);
 
     const handleViewChanges = async (sessionId: string) => {
         setSelectedSessionId(sessionId);
@@ -113,7 +116,7 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
                 loadOneShotStats(session.id);
             });
         }
-    }, [sessions, loading]);
+    }, [sessions, loading, loadOneShotStats]);
 
     if (loading) {
         return (

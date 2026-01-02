@@ -72,3 +72,13 @@ export interface ProjectDetails {
         path: string;
     }[];
 }
+
+export interface FileChange {
+    tool: string;
+    type: string; // 'write' | 'edit'
+    path: string;
+    timestamp: string;
+    content?: string;
+    target_content?: string;
+    diff?: string;
+}

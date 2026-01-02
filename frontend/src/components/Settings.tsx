@@ -23,16 +23,17 @@ export const Settings: React.FC = () => {
     const [saving, setSaving] = useState(false);
     const [hasChanges, setHasChanges] = useState(false);
 
-    useEffect(() => {
-        loadConfigs();
-    }, []);
-
     const loadConfigs = async () => {
         setLoading(true);
         const data = await api.getConfigs();
         setConfigs(data);
         setLoading(false);
     };
+
+    useEffect(() => {
+        // eslint-disable-next-line
+        loadConfigs();
+    }, []);
 
     const loadFile = async (path: string) => {
         setLoading(true);

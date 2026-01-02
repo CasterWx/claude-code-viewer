@@ -7,7 +7,7 @@ export const formatDate = (dateString: string | null | undefined): string => {
             month: 'short',
             day: 'numeric'
         });
-    } catch (e) {
+    } catch {
         return '';
     }
 };

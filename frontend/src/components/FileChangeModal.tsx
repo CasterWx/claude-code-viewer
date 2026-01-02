@@ -1,15 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { X, FileText, ChevronRight, ChevronDown, Folder, File, Plus, Pencil } from 'lucide-react';
 
-interface FileChange {
-    tool: string;
-    type: string; // 'write' | 'edit'
-    path: string;
-    timestamp: string;
-    content?: string;
-    target_content?: string;
-    diff?: string;
-}
+import type { FileChange } from '../types';
 
 interface FileChangeModalProps {
     isOpen: boolean;
@@ -36,7 +28,7 @@ const buildFileTree = (fileMap: Map<string, string>) => {
     if (paths.length === 0) return { root: {}, prefix: '' };
 
     const splitPaths = paths.map(p => p.split('/'));
-    let commonPrefix: string[] = [];
+    const commonPrefix: string[] = [];
 
     // Naively assume absolute paths starting with /
     const minLen = Math.min(...splitPaths.map(p => p.length));

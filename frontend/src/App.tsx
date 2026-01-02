@@ -29,12 +29,14 @@ function AppContent() {
     if (selectedProject) {
       api.getSessions(selectedProject).then(setSessions);
     } else {
+      // eslint-disable-next-line
       setSessions([]);
     }
   }, [selectedProject]);
 
   useEffect(() => {
     if (selectedSessionId) {
+      // eslint-disable-next-line
       setLoading(true);
       api.getSession(selectedSessionId).then(res => {
         setMessages(res);

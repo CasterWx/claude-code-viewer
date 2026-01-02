@@ -11,7 +11,7 @@ export const formatDateTime = (dateString: string | null | undefined): string =>
             second: '2-digit',
             hour12: false
         }).replace(/\//g, '-');
-    } catch (e) {
+    } catch {
         return '';
     }
 };

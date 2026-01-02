@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
-import type { Message, Tag } from '../types';
+import type { Message, Tag, FileChange } from '../types';
 import { Sparkles, FileText } from 'lucide-react';
 import { MessageItem } from './MessageItem';
 import { TagManager } from './TagManager';
@@ -44,9 +44,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const { t } = useTranslation();
     const bottomRef = useRef<HTMLDivElement>(null);
     const [fileChangesOpen, setFileChangesOpen] = useState(false);
-    const [fileChanges, setFileChanges] = useState<any[]>([]);
+    const [fileChanges, setFileChanges] = useState<FileChange[]>([]);
     const [codeSurvival, setCodeSurvival] = useState<number | null>(null);
     const [loadingSurvival, setLoadingSurvival] = useState(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [survivalStats, setSurvivalStats] = useState<any>(null);
     const [survivalDetailsOpen, setSurvivalDetailsOpen] = useState(false);
 
@@ -57,6 +58,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     // Auto-load code survival stats when session changes
     useEffect(() => {
         if (sessionId && fileChangeCount && fileChangeCount > 0) {
+            // eslint-disable-next-line
             setLoadingSurvival(true);
             api.getOneShotStats(sessionId, ['md', 'txt'])
                 .then(stats => {

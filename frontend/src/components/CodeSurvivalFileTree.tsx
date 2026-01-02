@@ -40,12 +40,14 @@ const buildFileTree = (files: FileStat[]): FileTreeNode[] => {
                     name: part,
                     path: parts.slice(0, index + 1).join('/'),
                     type: isFile ? 'file' : 'folder',
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
                     children: isFile ? undefined : (childrenObj as any),
                     fileStat: isFile ? file : undefined
                 };
             }
 
             if (index < parts.length - 1) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 currentLevel = currentLevel[part].children as any;
             }
         });
@@ -55,10 +57,11 @@ const buildFileTree = (files: FileStat[]): FileTreeNode[] => {
     const convertToArray = (nodes: { [key: string]: FileTreeNode }): FileTreeNode[] => {
         return Object.values(nodes)
             .map(node => {
-                if (node.children && typeof node.children === 'object') {
+                // Check if children is an object (map) consistent with our build process
+                if (node.children && typeof node.children === 'object' && !Array.isArray(node.children)) {
                     return {
                         ...node,
-                        children: convertToArray(node.children as any)
+                        children: convertToArray(node.children as unknown as { [key: string]: FileTreeNode })
                     };
                 }
                 return node;
