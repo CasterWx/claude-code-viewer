@@ -11,6 +11,7 @@ from claude_viewer.config import CLAUDE_LOG_PATH, DB_PATH
 from claude_viewer.parser import LogParser
 from claude_viewer.storage import Storage
 from claude_viewer.config_manager import ConfigManager
+from claude_viewer.watcher import LogWatcher
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Ensure config dir exists
+if not DB_PATH.parent.exists():
+    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
 storage = Storage(DB_PATH)
 parser = LogParser(CLAUDE_LOG_PATH)
 config_manager = ConfigManager()
@@ -38,7 +43,41 @@ async def startup_event():
         result = parser.parse_session(session_info['file_path'])
         if result['messages']:
             storage.save_session(session_info['project'], session_info, result['messages'], result['metadata'], project_path=session_info.get('project_path'))
+
     logger.info("Scan complete.")
+
+    # Start watcher
+    def on_log_change(file_path):
+        try:
+            # Re-scan to find project info for this file
+            # This is a bit inefficient but safe since we need project context
+            # Optimization: could parse path to find project info
+            for session_info in parser.scan_projects():
+                if os.path.abspath(session_info['file_path']) == os.path.abspath(file_path):
+                    result = parser.parse_session(file_path)
+                    if result['messages']:
+                        storage.save_session(
+                            session_info['project'], 
+                            session_info, 
+                            result['messages'], 
+                            result['metadata'],
+                            project_path=session_info.get('project_path')
+                        )
+                    logger.info(f"Updated session from {file_path}")
+                    break
+        except Exception as e:
+            logger.error(f"Error processing update: {e}")
+
+    watcher = LogWatcher(CLAUDE_LOG_PATH, on_log_change)
+    watcher.start()
+    
+    # Store watcher in app state to prevent GC
+    app.state.watcher = watcher
+
+@app.on_event("shutdown")
+def shutdown_event():
+    if hasattr(app.state, "watcher"):
+        app.state.watcher.stop()
 
 @app.get("/api/projects")
 def get_projects():

@@ -99,15 +99,43 @@ export const Dashboard: React.FC = () => {
 
     const handleExport = async () => {
         if (!dashboardRef.current) return;
+
         try {
-            const canvas = await html2canvas(dashboardRef.current, {
+            // Create a clone of the element
+            const originalElement = dashboardRef.current;
+            const clone = originalElement.cloneNode(true) as HTMLElement;
+
+            // Apply styles to the clone to ensure full capture
+            clone.style.position = 'absolute';
+            clone.style.top = '-9999px';
+            clone.style.left = '-9999px';
+            clone.style.width = `${originalElement.offsetWidth}px`;
+            clone.style.height = 'auto'; // Let it expand to full height
+            clone.style.overflow = 'visible'; // Show all content
+            clone.style.zIndex = '-1';
+
+            // Append to body
+            document.body.appendChild(clone);
+
+            // Capture
+            const canvas = await html2canvas(clone, {
                 backgroundColor: '#ffffff',
-                scale: 2 // High res
+                scale: 2, // High resolution
+                useCORS: true,
+                logging: false,
+                windowWidth: originalElement.scrollWidth,
+                windowHeight: originalElement.scrollHeight
             });
+
+            // Cleanup
+            document.body.removeChild(clone);
+
+            // Download
             const link = document.createElement('a');
             link.download = `claude-dashboard-${new Date().toISOString().split('T')[0]}.png`;
             link.href = canvas.toDataURL();
             link.click();
+
         } catch (err) {
             console.error('Export failed:', err);
         }

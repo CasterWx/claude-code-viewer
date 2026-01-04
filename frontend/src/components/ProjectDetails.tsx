@@ -2,11 +2,14 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import type { ProjectDetails as ProjectDetailsType, Session, FileChange } from '../types';
 import { api } from '../api';
-import { Folder, GitBranch, FileCode, Activity, MessageSquare, Database, FileText, CheckCircle } from 'lucide-react';
+import { Folder, GitBranch, FileCode, Activity, MessageSquare, Database, FileText, CheckCircle, Clock, Info, Hammer } from 'lucide-react';
 import { formatDateTime } from '../utils/formatDateTime';
+import { formatDuration } from '../utils/formatDuration';
 import { FileChangeModal } from './FileChangeModal';
-import { SessionStatsModal } from './SessionStatsModal';
+
 import { OneShotDetailsModal } from './OneShotDetailsModal';
+import { SessionAnalyticsModal } from './SessionAnalyticsModal';
+import { Tooltip } from './Tooltip';
 import { useTranslation } from 'react-i18next';
 
 interface ProjectDetailsProps {
@@ -36,8 +39,10 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
     const [fileChanges, setFileChanges] = useState<FileChange[]>([]);
 
     // Details Modal State
-    const [statsModalOpen, setStatsModalOpen] = useState(false);
-    const [statsSession, setStatsSession] = useState<Session | null>(null);
+
+
+    const [analyticsModalOpen, setAnalyticsModalOpen] = useState(false);
+    const [selectedAnalyticsSession, setSelectedAnalyticsSession] = useState<Session | null>(null);
 
     // One Shot Stats State
     const [oneShotStats, setOneShotStats] = useState<Record<string, OneShotStats>>({});
@@ -247,14 +252,51 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
                         <div className="overflow-x-auto">
                             <table className="w-full text-left border-collapse">
                                 <thead>
-                                    <tr className="border-b-4 border-black bg-gray-50">
-                                        <th className="p-3 text-left">{t('project.col_session_id')}</th>
-                                        <th className="p-3 text-left">{t('project.col_started')}</th>
+                                    <tr className="border-b-4 border-black bg-gray-50 text-xs uppercase text-gray-500 font-bold">
+                                        <th className="p-3 text-left w-32">{t('project.col_session_id')}</th>
+                                        <th className="p-3 text-left w-32">{t('project.col_started')}</th>
                                         <th className="p-3 text-left">{t('project.col_model')}</th>
-                                        <th className="p-3 text-right">{t('project.col_turns')}</th>
-                                        <th className="p-3 text-right">{t('project.col_tokens')}</th>
-                                        <th className="p-3 text-right">{t('project.col_files_changed')}</th>
-                                        <th className="p-3 text-center w-32">{t('project.col_code_survival')}</th>
+                                        <th className="p-3 text-right">
+                                            <Tooltip content={t('project.tooltip_turns')}>
+                                                <div className="flex items-center justify-end gap-1 cursor-help underline decoration-dotted">
+                                                    {t('project.col_turns')}
+                                                    <Info size={10} />
+                                                </div>
+                                            </Tooltip>
+                                        </th>
+                                        <th className="p-3 text-right">
+                                            <Tooltip content={t('project.tooltip_tokens')}>
+                                                <div className="flex items-center justify-end gap-1 cursor-help underline decoration-dotted">
+                                                    {t('project.col_tokens')}
+                                                    <Info size={10} />
+                                                </div>
+                                            </Tooltip>
+                                        </th>
+
+                                        <th className="p-3 text-right">
+                                            <Tooltip content={t('project.tooltip_files')}>
+                                                <div className="flex items-center justify-end gap-1 cursor-help underline decoration-dotted">
+                                                    {t('project.col_files_changed')}
+                                                    <Info size={10} />
+                                                </div>
+                                            </Tooltip>
+                                        </th>
+                                        <th className="p-3 text-center w-32">
+                                            <Tooltip content={t('project.tooltip_survival')}>
+                                                <div className="flex items-center justify-center gap-1 cursor-help underline decoration-dotted">
+                                                    {t('project.col_code_survival')}
+                                                    <Info size={10} />
+                                                </div>
+                                            </Tooltip>
+                                        </th>
+                                        <th className="p-3 text-center w-40">
+                                            <Tooltip content={t('project.tooltip_efficiency')}>
+                                                <div className="flex items-center justify-center gap-1 cursor-help underline decoration-dotted">
+                                                    {t('project.col_efficiency')}
+                                                    <Info size={10} />
+                                                </div>
+                                            </Tooltip>
+                                        </th>
                                         <th className="p-3 text-center">{t('project.col_activity')}</th>
                                     </tr>
                                 </thead>
@@ -262,6 +304,19 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
                                     {sessions.map((session) => {
                                         const stats = oneShotStats[session.id];
                                         const isLoadingStats = loadingStats[session.id];
+
+                                        // Parse Tool Stats
+                                        let toolStats: Record<string, number> = {};
+                                        try {
+                                            if (session.tool_stats) {
+                                                toolStats = JSON.parse(session.tool_stats);
+                                            }
+                                        } catch (e) { console.error("Failed to parse tool stats", e) }
+
+                                        const totalTools = Object.values(toolStats).reduce((a, b) => a + b, 0);
+                                        const toolTooltip = Object.entries(toolStats)
+                                            .map(([name, count]) => `${name}: ${count}`)
+                                            .join('\n');
 
                                         return (
                                             <tr key={session.id} className="border-b border-gray-200 hover:bg-yellow-50 transition-colors">
@@ -284,7 +339,20 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
                                                     </span>
                                                 </td>
                                                 <td className="p-3 text-right font-mono text-sm">
-                                                    {session.turns || '-'}
+                                                    <div className="flex flex-col items-end gap-1">
+                                                        <div className="flex items-baseline gap-1">
+                                                            <span className="font-bold">{session.turns || 0}</span>
+                                                            <span className="text-[10px] text-gray-400">/ {session.total_messages || '-'}</span>
+                                                        </div>
+                                                        {totalTools > 0 && (
+                                                            <Tooltip content={toolTooltip}>
+                                                                <div className="flex items-center gap-1 text-[10px] text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200 hover:border-black cursor-help transition-colors">
+                                                                    <Hammer size={8} />
+                                                                    {totalTools}
+                                                                </div>
+                                                            </Tooltip>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="p-3 text-right text-sm">
                                                     <div className="flex flex-col items-end text-xs">
@@ -351,10 +419,38 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
                                                     )}
                                                 </td>
                                                 <td className="p-3 text-center">
+                                                    {/* Efficiency Cell */}
+                                                    {session.total_duration_seconds ? (
+                                                        <div className="flex flex-col gap-1 items-center">
+                                                            <div className="flex items-center gap-1 text-xs font-bold">
+                                                                <Clock size={10} className="text-gray-400" />
+                                                                {formatDuration(session.total_duration_seconds)}
+                                                            </div>
+                                                            {/* Mini Stacked Bar */}
+                                                            <div className="flex h-1.5 w-24 rounded-full overflow-hidden bg-gray-100 border border-black/5" title={`Human Wait: ${formatDuration(session.user_duration_seconds || 0)} | System Work: ${formatDuration(session.model_duration_seconds || 0)}`}>
+                                                                <div
+                                                                    className="bg-primary-yellow"
+                                                                    style={{ width: `${((session.user_duration_seconds || 0) / session.total_duration_seconds) * 100}%` }}
+                                                                />
+                                                                <div
+                                                                    className="bg-black"
+                                                                    style={{ width: `${((session.model_duration_seconds || 0) / session.total_duration_seconds) * 100}%` }}
+                                                                />
+                                                            </div>
+                                                            <div className="flex justify-between w-24 text-[8px] font-bold text-gray-400 uppercase">
+                                                                <span title="Human Wait Time">Wait</span>
+                                                                <span title="System Processing Time">Sys</span>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="text-gray-300 text-xs">-</span>
+                                                    )}
+                                                </td>
+                                                <td className="p-3 text-center">
                                                     <button
                                                         onClick={() => {
-                                                            setStatsSession(session);
-                                                            setStatsModalOpen(true);
+                                                            setSelectedAnalyticsSession(session);
+                                                            setAnalyticsModalOpen(true);
                                                         }}
                                                         className="p-1 hover:bg-black hover:text-white transition-colors rounded-sm text-gray-400 hover:text-white"
                                                         title={t('project.view_analytics')}
@@ -385,11 +481,15 @@ export const ProjectDetails: React.FC<ProjectDetailsProps> = ({ projectName }) =
                 />
             )}
 
-            {statsSession && (
-                <SessionStatsModal
-                    isOpen={statsModalOpen}
-                    onClose={() => setStatsModalOpen(false)}
-                    session={statsSession}
+
+
+            {/* Advanced Analytics Modal */}
+            {/* Advanced Analytics Modal */}
+            {analyticsModalOpen && selectedAnalyticsSession && (
+                <SessionAnalyticsModal
+                    isOpen={analyticsModalOpen}
+                    onClose={() => setAnalyticsModalOpen(false)}
+                    session={selectedAnalyticsSession}
                 />
             )}
 

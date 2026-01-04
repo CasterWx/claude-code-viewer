@@ -26,13 +26,21 @@ export interface Session {
     output_tokens?: number;
     turns?: number;
     branch?: string;
+    total_duration_seconds?: number;
+    user_duration_seconds?: number;
+    model_duration_seconds?: number;
+    total_messages?: number;
+    tool_stats?: string; // JSON string
     token_usage_history?: string; // JSON string
+    read_write_ratio?: number;
+    nav_miss_rate?: number;
+    avg_prompt_len?: number;
 }
 
 export interface Message {
     id: number;
     session_id: string;
-    role: "user" | "assistant" | "system";
+    role: "user" | "assistant" | "system" | "tool";
     content: string;
     timestamp: string;
 }

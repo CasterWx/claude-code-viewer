@@ -61,7 +61,15 @@ class Storage:
             ("output_tokens", "INTEGER DEFAULT 0"),
             ("turns", "INTEGER DEFAULT 0"),
             ("branch", "TEXT"),
-            ("token_usage_history", "TEXT")
+            ("token_usage_history", "TEXT"),
+            ("total_duration_seconds", "INTEGER DEFAULT 0"),
+            ("user_duration_seconds", "INTEGER DEFAULT 0"),
+            ("model_duration_seconds", "INTEGER DEFAULT 0"),
+            ("total_messages", "INTEGER DEFAULT 0"),
+            ("tool_stats", "TEXT"),
+            ("read_write_ratio", "REAL DEFAULT 0"),
+            ("nav_miss_rate", "REAL DEFAULT 0"),
+            ("avg_prompt_len", "REAL DEFAULT 0")
         ]:
             try:
                 c.execute(f"ALTER TABLE sessions ADD COLUMN {col} {type_}")
@@ -123,8 +131,9 @@ class Storage:
             INSERT OR REPLACE INTO sessions (
                 id, project_name, file_path, start_time, model, 
                 total_tokens, input_tokens, output_tokens, turns, branch, token_usage_history,
-                file_change_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                file_change_count, total_duration_seconds, user_duration_seconds, model_duration_seconds,
+                total_messages, tool_stats, read_write_ratio, nav_miss_rate, avg_prompt_len
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             session_data['session_id'], 
             project_name, 
@@ -137,7 +146,16 @@ class Storage:
             metadata.get('turns', 0),
             metadata.get('branch'),
             json.dumps(metadata.get('token_usage_history', [])),
-            metadata.get('file_change_count', 0)
+            metadata.get('file_change_count', 0),
+            metadata.get('total_duration_seconds', 0),
+            metadata.get('user_duration_seconds', 0),
+            metadata.get('model_duration_seconds', 0),
+            metadata.get('total_messages', 0),
+
+            json.dumps(metadata.get('tool_stats', {})),
+            metadata.get('read_write_ratio', 0.0),
+            metadata.get('nav_miss_rate', 0.0),
+            metadata.get('avg_prompt_len', 0.0)
         ))
         
         # Insert Messages

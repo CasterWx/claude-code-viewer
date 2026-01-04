@@ -28,15 +28,33 @@ export const TagManager: React.FC<TagManagerProps> = ({ sessionId, initialTags, 
 
     const handleAddTag = async () => {
         if (!newTagName.trim()) return;
-        await api.addTag(sessionId, newTagName);
-        setNewTagName('');
-        setIsAdding(false);
-        onTagsChange();
+        try {
+            await api.addTag(sessionId, newTagName);
+
+            // Optimistic update
+            const newTag: Tag = {
+                id: Date.now(),
+                name: newTagName,
+                color: 'blue'
+            };
+            setTags(prev => [...prev, newTag]);
+
+            setNewTagName('');
+            setIsAdding(false);
+            onTagsChange();
+        } catch (e) {
+            console.error("Failed to add tag", e);
+        }
     };
 
     const handleRemoveTag = async (tagName: string) => {
-        await api.removeTag(sessionId, tagName);
-        onTagsChange();
+        try {
+            await api.removeTag(sessionId, tagName);
+            setTags(prev => prev.filter(t => t.name !== tagName));
+            onTagsChange();
+        } catch (e) {
+            console.error("Failed to remove tag", e);
+        }
     };
 
     if (compact) {

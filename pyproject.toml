@@ -16,7 +16,8 @@ dependencies = [
     "click",
     "fastapi",
     "uvicorn",
-    "python-multipart"
+    "python-multipart",
+    "watchdog"
 ]
 requires-python = ">=3.8"
 

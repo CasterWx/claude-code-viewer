@@ -99,9 +99,17 @@ class LogParser:
             "input_tokens": 0,
             "output_tokens": 0,
             "turns": 0,
+            "total_messages": 0,
             "branch": None,
             "token_usage_history": [],
-            "modified_files": set()
+            "tool_stats": {},
+            "modified_files": set(),
+            # Analytics Counters
+            "read_count": 0,
+            "write_count": 0,
+            "nav_miss_count": 0,
+            "nav_total_count": 0,
+            "user_chars": 0
         }
         
         try:
@@ -158,12 +166,31 @@ class LogParser:
                                 text_parts = []
                                 for block in raw_content:
                                     if block.get("type") == "text":
-                                        text_parts.append(block.get("text", ""))
+                                        txt = block.get("text", "")
+                                        text_parts.append(txt)
+                                        if role == "user":
+                                            metadata["user_chars"] += len(txt)
                                     elif block.get("type") == "tool_use":
+                                        # Track Tool Stats
+                                        t_name = block.get('name')
+                                        if t_name:
+                                            metadata["tool_stats"][t_name] = metadata["tool_stats"].get(t_name, 0) + 1
+                                            
                                         # Format as custom tag for frontend rendering
                                         input_block = block.get('input', {})
                                         input_json = json.dumps(input_block, indent=2)
                                         text_parts.append(f"\n<tool-use name=\"{block.get('name')}\">\n{input_json}\n</tool-use>\n")
+
+                                        # Analytics: Read vs Write
+                                        tn_lower = t_name.lower()
+                                        if any(x in tn_lower for x in ['view', 'read', 'list', 'search', 'glob', 'find']):
+                                            metadata["read_count"] += 1
+                                        elif any(x in tn_lower for x in ['write', 'edit', 'replace', 'create', 'append', 'run']):
+                                            metadata["write_count"] += 1
+                                        
+                                        # Analytics: Navigation Total (view/list)
+                                        if any(x in tn_lower for x in ['view_file', 'list_dir']):
+                                            metadata["nav_total_count"] += 1
                                         
                                         # Track modified files
                                         tool_name = block.get('name', '')
@@ -205,12 +232,34 @@ class LogParser:
                                             # simple serialization for now
                                             content_str = json.dumps(content_str)
                                             
+                                        # Analytics: Navigation Miss
+                                        # Check if this result indicates a file system error
+                                        # We accept false positives/negatives as heuristic
+                                        low_res = content_str.lower()
+                                        if "no such file" in low_res or "file not found" in low_res or "cannot access" in low_res:
+                                             metadata["nav_miss_count"] += 1
+
                                         text_parts.append(f"\n<tool-result>\n{content_str}\n</tool-result>\n")
+                                        
                                 content = "".join(text_parts)
+                                
+                                # Heuristic: If the message originates from 'user' but contains 'tool_result' and NO 'text' blocks that are just user input,
+                                # it is likely a tool output message.
+                                # Check the blocks again to be sure:
+                                if role == "user":
+                                    has_tool_result = any(b.get("type") == "tool_result" for b in raw_content)
+                                    has_user_text = any(b.get("type") == "text" for b in raw_content)
+                                    
+                                    if has_tool_result and not has_user_text:
+                                        role = "tool"
+                                        # Decrement turns since this isn't a user turn
+                                        metadata["turns"] -= 1
+
                             elif isinstance(raw_content, str):
                                 content = raw_content
                         
                         if role and content:
+                            metadata["total_messages"] += 1
                             messages.append({
                                 "role": role,
                                 "content": content,
@@ -223,8 +272,84 @@ class LogParser:
             logger.error(f"Error reading {file_path}: {e}")
         
         # Convert set to count
+        # Convert set to count
         metadata["file_change_count"] = len(metadata["modified_files"])
         del metadata["modified_files"]
+
+        # Final Analytics Calculations
+        # 1. Read/Write Ratio
+        if metadata["write_count"] > 0:
+            metadata["read_write_ratio"] = round(metadata["read_count"] / metadata["write_count"], 2)
+        else:
+            metadata["read_write_ratio"] = metadata["read_count"] # If no writes, ratio is just read count (infinity proxy) or just raw count.
+            # actually better to store as float. If write=0, maybe set to read_count * 1.0 or 999.0?
+            # Let's just set it to read_count if write is 0, treating it as "ratio to 1" conceptually if we consider base work.
+            # Or simplified: just store them as raw or calculated. Let's store ratio.
+            if metadata["read_count"] > 0:
+                metadata["read_write_ratio"] = float(metadata["read_count"])
+            else:
+                metadata["read_write_ratio"] = 0.0
+
+        # 2. Nav Miss Rate
+        if metadata["nav_total_count"] > 0:
+            metadata["nav_miss_rate"] = round((metadata["nav_miss_count"] / metadata["nav_total_count"]) * 100, 1)
+        else:
+            metadata["nav_miss_rate"] = 0.0
+
+        # 3. Avg Prompt Length
+        # Use Turns count (which we decremented for tool outputs, so it represents User Turns)
+        user_turns = max(1, metadata["turns"])
+        metadata["avg_prompt_len"] = round(metadata["user_chars"] / user_turns, 1)
+
+        # Cleanup temp counters
+        del metadata["read_count"]
+        # del metadata["write_count"] # Keep raw counts if useful? No, schema will just store metadata fields if we map them.
+        # Actually storage.py maps specific keys. I should ensure these keys exist in metadata.
+        # I will leave them in metadata for now, but explicit keys are 'read_write_ratio', 'nav_miss_rate', 'avg_prompt_len'.
+        del metadata["nav_miss_count"]
+        del metadata["nav_total_count"]
+        del metadata["user_chars"]
+
+        # Calculate Timing Analysis
+        if messages:
+             # Sort by timestamp just in case
+            try:
+                sorted_msgs = sorted(messages, key=lambda m: m["timestamp"])
+                start_time = datetime.fromisoformat(sorted_msgs[0]["timestamp"])
+                end_time = datetime.fromisoformat(sorted_msgs[-1]["timestamp"])
+                
+                total_duration = (end_time - start_time).total_seconds()
+                metadata["total_duration_seconds"] = total_duration
+                
+                user_duration = 0
+                model_duration = 0
+                
+                # Iterate and attribute time to the *responder* 
+                # (Time gap comes BEFORE the message, so gap = prev_msg to curr_msg)
+                # If curr_msg is user, gap is "User Think Time" -> user_duration
+                # If curr_msg is bot/tool, gap is "Processing Time" -> model_duration
+                
+                for i in range(1, len(sorted_msgs)):
+                    curr = sorted_msgs[i]
+                    prev = sorted_msgs[i-1]
+                    
+                    t_curr = datetime.fromisoformat(curr["timestamp"])
+                    t_prev = datetime.fromisoformat(prev["timestamp"])
+                    diff = (t_curr - t_prev).total_seconds()
+                    
+                    if curr["role"] == "user":
+                        user_duration += diff
+                    else:
+                        model_duration += diff
+                        
+                metadata["user_duration_seconds"] = user_duration
+                metadata["model_duration_seconds"] = model_duration
+                
+            except Exception as e:
+                logger.warning(f"Failed to calc timing for {file_path}: {e}")
+                metadata["total_duration_seconds"] = 0
+                metadata["user_duration_seconds"] = 0
+                metadata["model_duration_seconds"] = 0
         
         return {
             "messages": messages,

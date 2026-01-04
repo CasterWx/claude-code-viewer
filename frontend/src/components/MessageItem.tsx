@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { User, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { User, Sparkles, ChevronDown, ChevronUp, Terminal } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { formatMessageContent } from '../utils/formatMessage';
 import type { Message } from '../types';
@@ -19,16 +19,23 @@ export const MessageItem: React.FC<MessageItemProps> = ({ msg }) => {
             {/* Avatar */}
             <div className={`w-10 h-10 border-2 border-black flex items-center justify-center flex-shrink-0 shadow-hard-sm ${msg.role === 'user'
                 ? 'bg-primary-yellow text-black'
-                : 'bg-primary-red text-white'
+                : msg.role === 'tool'
+                    ? 'bg-gray-200 text-black'
+                    : 'bg-primary-red text-white'
                 }`}>
-                {msg.role === 'user' ? <User size={20} strokeWidth={2.5} /> : <Sparkles size={20} strokeWidth={2.5} />}
+                {msg.role === 'user' ? <User size={20} strokeWidth={2.5} /> :
+                    msg.role === 'tool' ? <Terminal size={20} strokeWidth={2.5} /> :
+                        <Sparkles size={20} strokeWidth={2.5} />}
             </div>
 
             {/* Message Content */}
             <div className={`max-w-[85%] flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                 <div className={`font-bold font-mono text-xs text-gray-500 mb-2 px-1 flex items-center gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'
                     }`}>
-                    <span className="uppercase tracking-wider">{msg.role === 'user' ? 'YOU' : 'CLAUDE'}</span>
+                    <span className="uppercase tracking-wider">{
+                        msg.role === 'user' ? 'YOU' :
+                            msg.role === 'tool' ? 'TOOL OUTPUT' : 'CLAUDE'
+                    }</span>
                     <span className="w-1.5 h-1.5 bg-black"></span>
                     <span>{new Date(msg.timestamp).toLocaleString(undefined, {
                         year: 'numeric',
@@ -42,7 +49,9 @@ export const MessageItem: React.FC<MessageItemProps> = ({ msg }) => {
 
                 <div className={`inline-block px-6 py-5 border-2 border-black text-[15px] leading-7 text-left max-w-full overflow-hidden shadow-hard-sm ${msg.role === 'user'
                     ? 'bg-primary-yellow/20 hover:bg-primary-yellow/30'
-                    : 'bg-white'
+                    : msg.role === 'tool'
+                        ? 'bg-gray-50'
+                        : 'bg-white'
                     }`}>
                     <div className={`prose prose-sm max-w-none 
                         prose-p:my-2 prose-headings:my-3 

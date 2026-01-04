@@ -6,4 +6,4 @@ def get_default_log_path() -> Path:
     return Path.home() / ".claude" / "projects"
 
 CLAUDE_LOG_PATH = os.environ.get("CLAUDE_LOG_PATH", get_default_log_path())
-DB_PATH = Path("claude_logs.db")
+DB_PATH = Path.home() / ".claude-viewer" / "claude_logs.db"
