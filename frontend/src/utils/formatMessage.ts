@@ -100,9 +100,95 @@ export const formatMessageContent = (content: string): string => {
     );
 
     // Tool Result: Render as blockquote or code block
+    // Special handling for image data
     formatted = formatted.replace(
         /<tool-result(?:\s+[^>]*)?>\s*([\s\S]*?)\s*<\/tool-result>/g,
-        '\n**📤 Output**\n```\n$1\n```\n'
+        (_match, content) => {
+            // Try to parse as JSON to detect image data
+            try {
+                const parsed = JSON.parse(content.trim());
+                const isArray = Array.isArray(parsed);
+                const items = isArray ? parsed : [parsed];
+                
+                // Check if any item is an image
+                const hasImage = items.some((item: any) => 
+                    item && typeof item === 'object' && 
+                    item.type === 'image' && 
+                    item.source && 
+                    item.source.type === 'base64' && 
+                    item.source.data
+                );
+                
+                if (hasImage) {
+                    // Use special markers for images - will be rendered in React component
+                    let result = '\n**📤 Output**\n\n';
+                    
+                    // Add image markers (will be replaced by React components)
+                    items.forEach((item: any, index: number) => {
+                        if (item && item.type === 'image' && item.source?.type === 'base64' && item.source?.data) {
+                            let base64Data = String(item.source.data).trim();
+                            
+                            // Skip if data is empty or too short
+                            if (!base64Data || base64Data.length < 10) {
+                                return;
+                            }
+                            
+                            // Prepare image data
+                            let imageSrc: string;
+                            if (base64Data.startsWith('data:')) {
+                                imageSrc = base64Data;
+                            } else {
+                                // Use media_type from source if available, otherwise detect
+                                let mimeType = item.source.media_type || 'image/png';
+                                
+                                // If no media_type, try to detect from base64 content
+                                if (!item.source.media_type) {
+                                    if (base64Data.startsWith('iVBORw0KGgo') || base64Data.startsWith('iVBORw0KG')) {
+                                        mimeType = 'image/png';
+                                    } else if (base64Data.startsWith('/9j/') || base64Data.startsWith('/9j')) {
+                                        mimeType = 'image/jpeg';
+                                    } else if (base64Data.startsWith('R0lGOD') || base64Data.startsWith('R0lGODlh')) {
+                                        mimeType = 'image/gif';
+                                    } else if (base64Data.startsWith('UklGR')) {
+                                        mimeType = 'image/webp';
+                                    }
+                                }
+                                
+                                // Remove any existing data: prefix if present
+                                base64Data = base64Data.replace(/^data:image\/[^;]+;base64,/, '');
+                                
+                                imageSrc = `data:${mimeType};base64,${base64Data}`;
+                            }
+                            
+                            // Use special marker that React component will replace
+                            // Format: [IMAGE_START]base64data[IMAGE_END:index]
+                            // This avoids issues with colons in base64 data
+                            result += `[IMAGE_START]${imageSrc}[IMAGE_END:${index}]\n\n`;
+                        }
+                    });
+                    
+                    // Add collapsible JSON code block
+                    const jsonString = JSON.stringify(parsed, null, 2);
+                    result += `<details class="json-code-details mt-2">
+<summary class="cursor-pointer text-xs font-bold uppercase tracking-widest text-primary-blue hover:text-black hover:underline py-2 select-none">📄 查看 JSON 数据 (View JSON Data)</summary>
+<div class="mt-2">
+
+\`\`\`json
+${jsonString}
+\`\`\`
+
+</div>
+</details>`;
+                    
+                    return result;
+                }
+            } catch {
+                // Not valid JSON or not image data, fall back to default
+            }
+            
+            // Default: render as code block
+            return '\n**📤 Output**\n```\n' + content + '\n```\n';
+        }
     );
 
     // System Reminder: Quote

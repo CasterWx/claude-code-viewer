@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { User, Sparkles, ChevronDown, ChevronUp, Terminal } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 import { formatMessageContent } from '../utils/formatMessage';
 import type { Message } from '../types';
 
@@ -8,9 +9,88 @@ interface MessageItemProps {
     msg: Message;
 }
 
+// Image component with consistent styling
+const ImagePreview: React.FC<{ src: string; alt: string; index: number }> = ({ src, alt, index }) => {
+    return (
+        <div className="my-4 flex justify-center">
+            <img
+                src={src}
+                alt={alt || `Image ${index + 1}`}
+                className="max-w-2xl h-auto border-2 border-black shadow-hard-sm rounded-sm"
+                style={{ maxWidth: '42rem' }}
+                loading="lazy"
+                onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                }}
+            />
+        </div>
+    );
+};
+
+// Shared img component for ReactMarkdown
+const markdownImgComponent = {
+    img: (props: any) => {
+        const { src, alt, ...rest } = props;
+        const imageSrc = typeof src === 'string' ? src : '';
+        
+        return (
+            <img 
+                src={imageSrc || undefined}
+                alt={alt || 'Image'}
+                {...rest}
+                className="max-w-2xl h-auto border-2 border-black shadow-hard-sm rounded-sm my-4 mx-auto block"
+                style={{ maxWidth: '42rem' }}
+                onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.style.display = 'none';
+                }}
+            />
+        );
+    }
+};
+
 export const MessageItem: React.FC<MessageItemProps> = ({ msg }) => {
-    const formattedContent = formatMessageContent(msg.content);
-    const lineCount = formattedContent.split('\n').length;
+    // Parse content and extract images
+    const contentParts = useMemo(() => {
+        const rawContent = formatMessageContent(msg.content);
+        const parts: Array<string | { type: 'image'; src: string; index: number }> = [];
+        // Match [IMAGE_START]...data...[IMAGE_END:index]
+        const imageMarkerRegex = /\[IMAGE_START\](.*?)\[IMAGE_END:(\d+)\]/g;
+        
+        let lastIndex = 0;
+        let match;
+        
+        while ((match = imageMarkerRegex.exec(rawContent)) !== null) {
+            // Add text before image
+            if (match.index > lastIndex) {
+                parts.push(rawContent.substring(lastIndex, match.index));
+            }
+            
+            // Add image data
+            const imageSrc = match[1];
+            const imageIndex = parseInt(match[2], 10);
+            parts.push({ type: 'image', src: imageSrc, index: imageIndex });
+            
+            lastIndex = match.index + match[0].length;
+        }
+        
+        // Add remaining text
+        if (lastIndex < rawContent.length) {
+            parts.push(rawContent.substring(lastIndex));
+        }
+        
+        // If no images found, return original content as single part
+        if (parts.length === 0) {
+            parts.push(rawContent);
+        }
+        
+        return parts;
+    }, [msg.content]);
+    
+    const lineCount = contentParts.reduce((sum, part) => 
+        sum + (typeof part === 'string' ? part.split('\n').length : 1), 0
+    );
     const isLong = lineCount > 30;
     const [isExpanded, setIsExpanded] = useState(!isLong);
 
@@ -53,19 +133,77 @@ export const MessageItem: React.FC<MessageItemProps> = ({ msg }) => {
                         ? 'bg-gray-50'
                         : 'bg-white'
                     }`}>
-                    <div className={`prose prose-sm max-w-none 
+                    <div 
+                        className={`prose prose-sm max-w-none 
                         prose-p:my-2 prose-headings:my-3 
                         prose-pre:bg-black prose-pre:text-white prose-pre:border-2 prose-pre:border-black prose-pre:rounded-none prose-pre:shadow-hard-sm
                         [&_pre_*]:!text-white [&_pre_*]:!bg-transparent
                         prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-sm prose-code:font-mono prose-code:text-xs prose-code:text-black
                         ${msg.role === 'user' ? 'prose-code:bg-black/10' : 'prose-code:bg-gray-100'}
+                        prose-img:max-w-2xl prose-img:h-auto prose-img:my-4 prose-img:mx-auto prose-img:block
                         break-words overflow-x-auto ${!isExpanded ? 'max-h-[800px] overflow-hidden relative' : ''}
                         `}>
-                        <ReactMarkdown>
-                            {isExpanded
-                                ? formattedContent
-                                : formattedContent.split('\n').slice(0, 30).join('\n') + '\n...'}
-                        </ReactMarkdown>
+                        {(() => {
+                            // Handle expand/collapse for text parts
+                            let textLineCount = 0;
+                            const renderedParts: React.ReactNode[] = [];
+                            let shouldStop = false;
+                            
+                            for (let idx = 0; idx < contentParts.length && !shouldStop; idx++) {
+                                const part = contentParts[idx];
+                                
+                                if (typeof part === 'object' && part.type === 'image') {
+                                    // Always show images
+                                    renderedParts.push(
+                                        <ImagePreview
+                                            key={`image-${idx}`}
+                                            src={part.src}
+                                            alt={`Image ${part.index + 1}`}
+                                            index={part.index}
+                                        />
+                                    );
+                                } else {
+                                    // Handle text content with expand/collapse
+                                    const textContent = typeof part === 'string' ? part : '';
+                                    const lines = textContent.split('\n');
+                                    const currentLineCount = lines.length;
+                                    
+                                    if (!isExpanded && textLineCount + currentLineCount > 30) {
+                                        // Show first 30 lines total across all text parts
+                                        const linesToShow = 30 - textLineCount;
+                                        if (linesToShow > 0) {
+                                            const contentToRender = lines.slice(0, linesToShow).join('\n') + '\n...';
+                                            renderedParts.push(
+                                                <ReactMarkdown
+                                                    key={`content-${idx}`}
+                                                    rehypePlugins={[rehypeRaw]}
+                                                    components={markdownImgComponent}
+                                                >
+                                                    {contentToRender}
+                                                </ReactMarkdown>
+                                            );
+                                        }
+                                        shouldStop = true;
+                                    } else {
+                                        // Show full content
+                                        if (textContent.trim()) {
+                                            renderedParts.push(
+                                                <ReactMarkdown
+                                                    key={`content-${idx}`}
+                                                    rehypePlugins={[rehypeRaw]}
+                                                    components={markdownImgComponent}
+                                                >
+                                                    {textContent}
+                                                </ReactMarkdown>
+                                            );
+                                        }
+                                        textLineCount += currentLineCount;
+                                    }
+                                }
+                            }
+                            
+                            return renderedParts;
+                        })()}
 
                         {!isExpanded && (
                             <div className={`absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t ${msg.role === 'user' ? 'from-primary-yellow/20' : 'from-white'} to-transparent`} />
