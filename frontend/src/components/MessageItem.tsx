@@ -9,45 +9,86 @@ interface MessageItemProps {
     msg: Message;
 }
 
-// Image component with consistent styling
+// Image component with consistent styling and size tag
 const ImagePreview: React.FC<{ src: string; alt: string; index: number }> = ({ src, alt, index }) => {
+    const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+    
     return (
-        <div className="my-4 flex justify-center">
+        <div className="my-4 flex flex-col relative max-w-sm w-full">
             <img
                 src={src}
                 alt={alt || `Image ${index + 1}`}
-                className="max-w-2xl h-auto border-2 border-black shadow-hard-sm rounded-sm"
-                style={{ maxWidth: '42rem' }}
+                className="w-full h-auto border-2 border-black shadow-hard-sm rounded-sm"
+                style={{ 
+                    maxWidth: '100%',
+                    display: 'block',
+                    objectFit: 'contain'
+                }}
                 loading="lazy"
+                onLoad={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    setDimensions({
+                        width: target.naturalWidth,
+                        height: target.naturalHeight
+                    });
+                }}
                 onError={(e) => {
                     const target = e.target as HTMLImageElement;
                     target.style.display = 'none';
                 }}
             />
+            {dimensions && (
+                <div className="absolute bottom-2 right-2 bg-black/80 text-white text-[10px] font-mono font-bold px-2 py-1 rounded-sm border border-white/30 shadow-hard-sm">
+                    {dimensions.width} × {dimensions.height}px
+                </div>
+            )}
         </div>
     );
 };
 
-// Shared img component for ReactMarkdown
-const markdownImgComponent = {
-    img: (props: any) => {
-        const { src, alt, ...rest } = props;
-        const imageSrc = typeof src === 'string' ? src : '';
-        
-        return (
+// Shared img component for ReactMarkdown with size tag
+const MarkdownImage: React.FC<any> = (props) => {
+    const { src, alt, ...rest } = props;
+    const imageSrc = typeof src === 'string' ? src : '';
+    const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
+    
+    if (!imageSrc) return null;
+    
+    return (
+        <div className="my-4 flex flex-col relative max-w-sm w-full">
             <img 
-                src={imageSrc || undefined}
+                src={imageSrc}
                 alt={alt || 'Image'}
                 {...rest}
-                className="max-w-2xl h-auto border-2 border-black shadow-hard-sm rounded-sm my-4 mx-auto block"
-                style={{ maxWidth: '42rem' }}
+                className="w-full h-auto border-2 border-black shadow-hard-sm rounded-sm"
+                style={{ 
+                    maxWidth: '100%',
+                    display: 'block',
+                    objectFit: 'contain'
+                }}
+                onLoad={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    setDimensions({
+                        width: target.naturalWidth,
+                        height: target.naturalHeight
+                    });
+                }}
                 onError={(e) => {
                     const target = e.target as HTMLImageElement;
                     target.style.display = 'none';
                 }}
             />
-        );
-    }
+            {dimensions && (
+                <div className="absolute bottom-2 right-2 bg-black/80 text-white text-[10px] font-mono font-bold px-2 py-1 rounded-sm border border-white/30 shadow-hard-sm">
+                    {dimensions.width} × {dimensions.height}px
+                </div>
+            )}
+        </div>
+    );
+};
+
+const markdownImgComponent = {
+    img: MarkdownImage
 };
 
 export const MessageItem: React.FC<MessageItemProps> = ({ msg }) => {
@@ -127,7 +168,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ msg }) => {
                     })}</span>
                 </div>
 
-                <div className={`inline-block px-6 py-5 border-2 border-black text-[15px] leading-7 text-left max-w-full overflow-hidden shadow-hard-sm ${msg.role === 'user'
+                <div className={`inline-block px-6 py-5 border-2 border-black text-[15px] leading-7 text-left w-full max-w-full overflow-hidden shadow-hard-sm ${msg.role === 'user'
                     ? 'bg-primary-yellow/20 hover:bg-primary-yellow/30'
                     : msg.role === 'tool'
                         ? 'bg-gray-50'
@@ -140,7 +181,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ msg }) => {
                         [&_pre_*]:!text-white [&_pre_*]:!bg-transparent
                         prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-sm prose-code:font-mono prose-code:text-xs prose-code:text-black
                         ${msg.role === 'user' ? 'prose-code:bg-black/10' : 'prose-code:bg-gray-100'}
-                        prose-img:max-w-2xl prose-img:h-auto prose-img:my-4 prose-img:mx-auto prose-img:block
+                        prose-img:max-w-sm prose-img:h-auto prose-img:my-4 prose-img:mx-auto prose-img:block
                         break-words overflow-x-auto ${!isExpanded ? 'max-h-[800px] overflow-hidden relative' : ''}
                         `}>
                         {(() => {
