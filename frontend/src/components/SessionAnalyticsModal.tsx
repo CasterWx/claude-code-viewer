@@ -32,17 +32,6 @@ export const SessionAnalyticsModal: React.FC<SessionAnalyticsModalProps> = ({ is
         }
     }, [session.token_usage_history, t]);
 
-    if (!isOpen) return null;
-
-    // --- Metric Logic ---
-
-    // 1. Read/Write
-    const rwRatio = session.read_write_ratio || 0;
-    const isResearch = rwRatio > 5; // Heuristic
-    const rwLabelKey = isResearch ? "analytics.style_research" : "analytics.style_impl";
-    const rwColor = isResearch ? "bg-blue-100 text-blue-800 border-blue-200" : "bg-green-100 text-green-800 border-green-200";
-    const rwDescKey = isResearch ? "analytics.desc_research" : "analytics.desc_impl";
-
     // Parse Tool Stats for exact counts
     const toolStats = useMemo(() => {
         if (!session.tool_stats) return { read: 0, write: 0 };
@@ -60,10 +49,21 @@ export const SessionAnalyticsModal: React.FC<SessionAnalyticsModalProps> = ({ is
                 }
             });
             return { read, write };
-        } catch (e) {
+        } catch {
             return { read: 0, write: 0 };
         }
     }, [session.tool_stats]);
+
+    if (!isOpen) return null;
+
+    // --- Metric Logic ---
+
+    // 1. Read/Write
+    const rwRatio = session.read_write_ratio || 0;
+    const isResearch = rwRatio > 5; // Heuristic
+    const rwLabelKey = isResearch ? "analytics.style_research" : "analytics.style_impl";
+    const rwColor = isResearch ? "bg-blue-100 text-blue-800 border-blue-200" : "bg-green-100 text-green-800 border-green-200";
+    const rwDescKey = isResearch ? "analytics.desc_research" : "analytics.desc_impl";
 
     // 2. Navigation
     const missRate = session.nav_miss_rate || 0;

@@ -85,7 +85,7 @@
         "col_turns": "轮数",
         "col_tokens": "Tokens (I/O)",
         "col_files_changed": "文件变更",
-        "col_code_survival": "代码存活率",
+        "col_code_survival": "AI代码留存率",
         "col_efficiency": "效能分析",
         "col_activity": "活动",
         "tooltip_turns": "有效的人工交互轮次数（排除工具结果）。下方的 Total 显示的是包含自动交互在内的总消息数。",
