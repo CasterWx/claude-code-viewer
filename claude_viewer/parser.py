@@ -1,7 +1,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Generator
+from typing import List, Dict, Any, Generator, Optional
 from datetime import datetime
 import urllib.parse
 
@@ -43,7 +43,7 @@ class LogParser:
                         "session_id": log_file.stem
                     }
     
-    def _reconstruct_path(self, decoded_path: str) -> Path | None:
+    def _reconstruct_path(self, decoded_path: str) -> Optional[Path]:
         """
         Attempts to reconstruct the real path from a decoded path (where / became -).
         Since we don't know which -s were originally /s and which were part of the name,
