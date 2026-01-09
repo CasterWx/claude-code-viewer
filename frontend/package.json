@@ -28,7 +28,7 @@
     "react-i18next": "^16.5.1",
     "react-is": "^19.2.3",
     "react-markdown": "^10.1.0",
-    "react-router-dom": "^7.11.0",
+    "react-router-dom": "^7.12.0",
     "recharts": "^3.6.0",
     "tailwind-merge": "^3.4.0"
   },
