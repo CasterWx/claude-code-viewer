@@ -3,18 +3,25 @@ import json
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import logging
+import threading
 
 logger = logging.getLogger(__name__)
+
 
 class Storage:
     def __init__(self, db_path: Path):
         self.db_path = db_path
+        self._lock = threading.Lock()  # Thread lock for write operations
         self.init_db()
 
     def init_db(self):
         """Initialize the database schema."""
         conn = sqlite3.connect(self.db_path)
         c = conn.cursor()
+
+        # Enable WAL mode for better concurrent performance
+        c.execute("PRAGMA journal_mode=WAL")
+        c.execute("PRAGMA synchronous=NORMAL")
         
         # Projects table
         c.execute('''CREATE TABLE IF NOT EXISTS projects (
@@ -112,68 +119,192 @@ class Storage:
         conn.close()
 
     def save_session(self, project_name: str, session_data: Dict[str, Any], messages: List[Dict[str, Any]], metadata: Dict[str, Any] = None, project_path: str = None):
-        """Save a session and its messages to the DB."""
+        """Save a session and its messages to the DB. Thread-safe."""
         if metadata is None:
             metadata = {}
-            
-        conn = sqlite3.connect(self.db_path)
-        c = conn.cursor()
-        
-        # Insert/Update Project
-        c.execute("INSERT OR IGNORE INTO projects (name, path, last_updated) VALUES (?, ?, datetime('now'))", (project_name, project_path))
-        if project_path:
-             c.execute("UPDATE projects SET path = ?, last_updated = datetime('now') WHERE name = ?", (project_path, project_name))
-        else:
-             c.execute("UPDATE projects SET last_updated = datetime('now') WHERE name = ?", (project_name,))
-        
-        # Insert/Update Session
-        c.execute("""
-            INSERT OR REPLACE INTO sessions (
-                id, project_name, file_path, start_time, model, 
-                total_tokens, input_tokens, output_tokens, turns, branch, token_usage_history,
-                file_change_count, total_duration_seconds, user_duration_seconds, model_duration_seconds,
-                total_messages, tool_stats, read_write_ratio, nav_miss_rate, avg_prompt_len
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            session_data['session_id'], 
-            project_name, 
-            session_data['file_path'], 
-            messages[0]['timestamp'] if messages else None,
-            metadata.get('model'),
-            metadata.get('total_tokens', 0),
-            metadata.get('input_tokens', 0),
-            metadata.get('output_tokens', 0),
-            metadata.get('turns', 0),
-            metadata.get('branch'),
-            json.dumps(metadata.get('token_usage_history', [])),
-            metadata.get('file_change_count', 0),
-            metadata.get('total_duration_seconds', 0),
-            metadata.get('user_duration_seconds', 0),
-            metadata.get('model_duration_seconds', 0),
-            metadata.get('total_messages', 0),
 
-            json.dumps(metadata.get('tool_stats', {})),
-            metadata.get('read_write_ratio', 0.0),
-            metadata.get('nav_miss_rate', 0.0),
-            metadata.get('avg_prompt_len', 0.0)
-        ))
-        
-        # Insert Messages
-        # For simplicity, we might wipe old messages for this session and re-insert, or check duplicates.
-        # Wiping is safer for updates if unique IDs are not guaranteed in logs.
-        c.execute("DELETE FROM messages WHERE session_id = ?", (session_data['session_id'],))
-        c.execute("DELETE FROM messages_fts WHERE content_rowid IN (SELECT id FROM messages WHERE session_id = ?)", (session_data['session_id'],))
-        
-        for msg in messages:
-            c.execute("INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
-                      (session_data['session_id'], msg['role'], msg.get('content', ''), msg['timestamp']))
-            
-            # Index for search
-            row_id = c.lastrowid
-            c.execute("INSERT INTO messages_fts (content_rowid, content) VALUES (?, ?)", (row_id, msg.get('content', '')))
-            
-        conn.commit()
-        conn.close()
+        with self._lock:  # Ensure thread-safe database access
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            c = conn.cursor()
+
+            try:
+                # Insert/Update Project
+                c.execute("INSERT OR IGNORE INTO projects (name, path, last_updated) VALUES (?, ?, datetime('now'))", (project_name, project_path))
+                if project_path:
+                    c.execute("UPDATE projects SET path = ?, last_updated = datetime('now') WHERE name = ?", (project_path, project_name))
+                else:
+                    c.execute("UPDATE projects SET last_updated = datetime('now') WHERE name = ?", (project_name,))
+
+                # Insert/Update Session
+                c.execute("""
+                    INSERT OR REPLACE INTO sessions (
+                        id, project_name, file_path, start_time, model,
+                        total_tokens, input_tokens, output_tokens, turns, branch, token_usage_history,
+                        file_change_count, total_duration_seconds, user_duration_seconds, model_duration_seconds,
+                        total_messages, tool_stats, read_write_ratio, nav_miss_rate, avg_prompt_len
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    session_data['session_id'],
+                    project_name,
+                    session_data['file_path'],
+                    messages[0]['timestamp'] if messages else None,
+                    metadata.get('model'),
+                    metadata.get('total_tokens', 0),
+                    metadata.get('input_tokens', 0),
+                    metadata.get('output_tokens', 0),
+                    metadata.get('turns', 0),
+                    metadata.get('branch'),
+                    json.dumps(metadata.get('token_usage_history', [])),
+                    metadata.get('file_change_count', 0),
+                    metadata.get('total_duration_seconds', 0),
+                    metadata.get('user_duration_seconds', 0),
+                    metadata.get('model_duration_seconds', 0),
+                    metadata.get('total_messages', 0),
+                    json.dumps(metadata.get('tool_stats', {})),
+                    metadata.get('read_write_ratio', 0.0),
+                    metadata.get('nav_miss_rate', 0.0),
+                    metadata.get('avg_prompt_len', 0.0)
+                ))
+
+                # Insert Messages
+                c.execute("DELETE FROM messages WHERE session_id = ?", (session_data['session_id'],))
+                c.execute("DELETE FROM messages_fts WHERE content_rowid IN (SELECT id FROM messages WHERE session_id = ?)", (session_data['session_id'],))
+
+                for msg in messages:
+                    c.execute("INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
+                              (session_data['session_id'], msg['role'], msg.get('content', ''), msg['timestamp']))
+
+                    # Index for search
+                    row_id = c.lastrowid
+                    c.execute("INSERT INTO messages_fts (content_rowid, content) VALUES (?, ?)", (row_id, msg.get('content', '')))
+
+                conn.commit()
+            finally:
+                conn.close()
+
+    def save_sessions_batch(self, sessions_data: List[tuple], progress_callback=None):
+        """
+        Batch save multiple sessions in a single transaction for better performance.
+
+        Args:
+            sessions_data: List of (project_name, session_data, messages, metadata, project_path) tuples
+            progress_callback: Optional callback(completed_count) to report progress
+        """
+        if not sessions_data:
+            return
+
+        with self._lock:
+            conn = sqlite3.connect(self.db_path, timeout=60.0)
+            c = conn.cursor()
+
+            try:
+                # Use a single transaction for all inserts
+                c.execute("BEGIN TRANSACTION")
+
+                for i, (project_name, session_data, messages, metadata, project_path) in enumerate(sessions_data):
+                    if metadata is None:
+                        metadata = {}
+
+                    # Insert/Update Project
+                    c.execute("INSERT OR IGNORE INTO projects (name, path, last_updated) VALUES (?, ?, datetime('now'))", (project_name, project_path))
+                    if project_path:
+                        c.execute("UPDATE projects SET path = ?, last_updated = datetime('now') WHERE name = ?", (project_path, project_name))
+                    else:
+                        c.execute("UPDATE projects SET last_updated = datetime('now') WHERE name = ?", (project_name,))
+
+                    # Insert/Update Session
+                    c.execute("""
+                        INSERT OR REPLACE INTO sessions (
+                            id, project_name, file_path, start_time, model,
+                            total_tokens, input_tokens, output_tokens, turns, branch, token_usage_history,
+                            file_change_count, total_duration_seconds, user_duration_seconds, model_duration_seconds,
+                            total_messages, tool_stats, read_write_ratio, nav_miss_rate, avg_prompt_len
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        session_data['session_id'],
+                        project_name,
+                        session_data['file_path'],
+                        messages[0]['timestamp'] if messages else None,
+                        metadata.get('model'),
+                        metadata.get('total_tokens', 0),
+                        metadata.get('input_tokens', 0),
+                        metadata.get('output_tokens', 0),
+                        metadata.get('turns', 0),
+                        metadata.get('branch'),
+                        json.dumps(metadata.get('token_usage_history', [])),
+                        metadata.get('file_change_count', 0),
+                        metadata.get('total_duration_seconds', 0),
+                        metadata.get('user_duration_seconds', 0),
+                        metadata.get('model_duration_seconds', 0),
+                        metadata.get('total_messages', 0),
+                        json.dumps(metadata.get('tool_stats', {})),
+                        metadata.get('read_write_ratio', 0.0),
+                        metadata.get('nav_miss_rate', 0.0),
+                        metadata.get('avg_prompt_len', 0.0)
+                    ))
+
+                    # Delete old messages
+                    c.execute("DELETE FROM messages WHERE session_id = ?", (session_data['session_id'],))
+
+                    # Insert Messages
+                    for msg in messages:
+                        c.execute("INSERT INTO messages (session_id, role, content, timestamp) VALUES (?, ?, ?, ?)",
+                                  (session_data['session_id'], msg['role'], msg.get('content', ''), msg['timestamp']))
+                        row_id = c.lastrowid
+                        c.execute("INSERT INTO messages_fts (content_rowid, content) VALUES (?, ?)", (row_id, msg.get('content', '')))
+
+                    if progress_callback and (i + 1) % 50 == 0:
+                        progress_callback(i + 1)
+
+                conn.commit()
+
+                if progress_callback:
+                    progress_callback(len(sessions_data))
+
+            except Exception as e:
+                conn.rollback()
+                raise e
+            finally:
+                conn.close()
+
+    def cleanup_orphaned_sessions(self, valid_session_ids: set) -> int:
+        """
+        Remove sessions from database that no longer exist in file system.
+
+        Args:
+            valid_session_ids: Set of session IDs that exist in file system
+
+        Returns:
+            Number of orphaned sessions removed
+        """
+        with self._lock:
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            c = conn.cursor()
+
+            try:
+                # Get all session IDs in database
+                c.execute("SELECT id FROM sessions")
+                db_session_ids = set(row[0] for row in c.fetchall())
+
+                # Find orphaned sessions
+                orphaned_ids = db_session_ids - valid_session_ids
+
+                if orphaned_ids:
+                    # Delete orphaned sessions and their messages
+                    placeholders = ','.join('?' * len(orphaned_ids))
+                    orphaned_list = list(orphaned_ids)
+
+                    c.execute(f"DELETE FROM messages WHERE session_id IN ({placeholders})", orphaned_list)
+                    c.execute(f"DELETE FROM messages_fts WHERE content_rowid IN (SELECT id FROM messages WHERE session_id IN ({placeholders}))", orphaned_list)
+                    c.execute(f"DELETE FROM session_tags WHERE session_id IN ({placeholders})", orphaned_list)
+                    c.execute(f"DELETE FROM sessions WHERE id IN ({placeholders})", orphaned_list)
+
+                    conn.commit()
+                    logger.info(f"Cleaned up {len(orphaned_ids)} orphaned sessions")
+
+                return len(orphaned_ids)
+            finally:
+                conn.close()
 
     def get_projects(self) -> List[Dict[str, Any]]:
         conn = sqlite3.connect(self.db_path)

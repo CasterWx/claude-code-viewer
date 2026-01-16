@@ -6,6 +6,10 @@ from typing import List, Optional
 import os
 from pathlib import Path
 import logging
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
+from time import time
 
 from claude_viewer.config import CLAUDE_LOG_PATH, DB_PATH
 from claude_viewer.parser import LogParser
@@ -14,6 +18,46 @@ from claude_viewer.config_manager import ConfigManager
 from claude_viewer.watcher import LogWatcher
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ScanProgress:
+    """Track background scan progress."""
+    total: int = 0
+    completed: int = 0
+    skipped: int = 0      # Empty files or metadata-only files (no conversation)
+    failed: int = 0       # Actual parse errors
+    is_scanning: bool = False
+    start_time: float = 0
+    end_time: float = 0
+
+    @property
+    def percent(self) -> float:
+        if self.total == 0:
+            return 0
+        return round((self.completed / self.total) * 100, 1)
+
+    @property
+    def elapsed_seconds(self) -> float:
+        if self.start_time == 0:
+            return 0
+        end = self.end_time if self.end_time > 0 else time()
+        return round(end - self.start_time, 2)
+
+    def to_dict(self) -> dict:
+        return {
+            "total": self.total,
+            "completed": self.completed,
+            "skipped": self.skipped,
+            "failed": self.failed,
+            "percent": self.percent,
+            "is_scanning": self.is_scanning,
+            "elapsed_seconds": self.elapsed_seconds
+        }
+
+
+# Global scan progress tracker
+scan_progress = ScanProgress()
 
 app = FastAPI(title="Claude Code Viewer")
 
@@ -34,32 +78,135 @@ storage = Storage(DB_PATH)
 parser = LogParser(CLAUDE_LOG_PATH)
 config_manager = ConfigManager()
 
+
+# Parse result status
+PARSE_OK = "ok"
+PARSE_SKIPPED = "skipped"  # Empty file or no messages (metadata only)
+PARSE_FAILED = "failed"    # Actual error
+
+
+def _parse_single_session(session_info: dict) -> tuple:
+    """
+    Parse a single session file.
+    Returns (session_info, result, status) where status is PARSE_OK/PARSE_SKIPPED/PARSE_FAILED.
+    """
+    file_path = session_info['file_path']
+    try:
+        # Check if file is empty
+        if os.path.getsize(file_path) == 0:
+            return (session_info, None, PARSE_SKIPPED)
+
+        result = parser.parse_session(file_path)
+        if result['messages']:
+            return (session_info, result, PARSE_OK)
+        # File has content but no valid messages (metadata only)
+        return (session_info, None, PARSE_SKIPPED)
+    except Exception as e:
+        logger.error(f"Error parsing {file_path}: {e}")
+        return (session_info, None, PARSE_FAILED)
+
+
+def _background_scan():
+    """Background task to scan and parse all sessions in parallel."""
+    global scan_progress
+
+    scan_progress.is_scanning = True
+    scan_progress.start_time = time()
+    scan_progress.completed = 0
+    scan_progress.skipped = 0
+    scan_progress.failed = 0
+    scan_progress.end_time = 0
+
+    # Collect all session info first
+    session_list = list(parser.scan_projects())
+    scan_progress.total = len(session_list)
+
+    if scan_progress.total == 0:
+        scan_progress.is_scanning = False
+        scan_progress.end_time = time()
+        logger.info("No sessions found to scan.")
+        return
+
+    logger.info(f"Starting parallel scan of {scan_progress.total} sessions...")
+
+    # Use ThreadPoolExecutor for parallel I/O-bound parsing
+    max_workers = min(32, os.cpu_count() * 4 or 8)
+
+    # Collect parsed results first, then batch save
+    parsed_results = []
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(_parse_single_session, info): info
+            for info in session_list
+        }
+
+        for future in as_completed(futures):
+            session_info, result, status = future.result()
+            if status == PARSE_OK:
+                parsed_results.append((session_info, result))
+            elif status == PARSE_SKIPPED:
+                scan_progress.skipped += 1
+            else:  # PARSE_FAILED
+                scan_progress.failed += 1
+
+    # Batch save to database (single transaction, much faster)
+    logger.info(f"Parsing complete, saving {len(parsed_results)} sessions to database...")
+
+    def update_progress(count):
+        scan_progress.completed = count
+
+    try:
+        batch_data = [
+            (
+                session_info['project'],
+                session_info,
+                result['messages'],
+                result['metadata'],
+                session_info.get('project_path')
+            )
+            for session_info, result in parsed_results
+        ]
+        storage.save_sessions_batch(batch_data, progress_callback=update_progress)
+    except Exception as e:
+        logger.error(f"Error in batch save: {e}")
+        scan_progress.failed += len(parsed_results) - scan_progress.completed
+
+    # Cleanup orphaned sessions (files deleted but records remain in DB)
+    all_file_session_ids = set(s['session_id'] for s in session_list)
+    orphaned_count = storage.cleanup_orphaned_sessions(all_file_session_ids)
+    if orphaned_count > 0:
+        logger.info(f"Removed {orphaned_count} orphaned session(s) from database")
+
+    scan_progress.is_scanning = False
+    scan_progress.end_time = time()
+    logger.info(
+        f"Scan complete: {scan_progress.completed} sessions loaded, "
+        f"{scan_progress.skipped} skipped, {scan_progress.failed} failed, "
+        f"took {scan_progress.elapsed_seconds}s"
+    )
+
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("Starting up...")
-    logger.info("Scanning logs...")
-    # In a real app we might want to do this async or on demand
-    for session_info in parser.scan_projects():
-        result = parser.parse_session(session_info['file_path'])
-        if result['messages']:
-            storage.save_session(session_info['project'], session_info, result['messages'], result['metadata'], project_path=session_info.get('project_path'))
 
-    logger.info("Scan complete.")
+    # Start background scan in a separate thread (non-blocking)
+    scan_thread = threading.Thread(target=_background_scan, daemon=True)
+    scan_thread.start()
+    logger.info("Background scan started, server is ready to accept requests.")
 
-    # Start watcher
+    # Start watcher for live updates
     def on_log_change(file_path):
         try:
-            # Re-scan to find project info for this file
-            # This is a bit inefficient but safe since we need project context
-            # Optimization: could parse path to find project info
             for session_info in parser.scan_projects():
                 if os.path.abspath(session_info['file_path']) == os.path.abspath(file_path):
                     result = parser.parse_session(file_path)
                     if result['messages']:
                         storage.save_session(
-                            session_info['project'], 
-                            session_info, 
-                            result['messages'], 
+                            session_info['project'],
+                            session_info,
+                            result['messages'],
                             result['metadata'],
                             project_path=session_info.get('project_path')
                         )
@@ -70,7 +217,7 @@ async def startup_event():
 
     watcher = LogWatcher(CLAUDE_LOG_PATH, on_log_change)
     watcher.start()
-    
+
     # Store watcher in app state to prevent GC
     app.state.watcher = watcher
 
@@ -78,6 +225,25 @@ async def startup_event():
 def shutdown_event():
     if hasattr(app.state, "watcher"):
         app.state.watcher.stop()
+
+
+@app.get("/api/scan/progress")
+def get_scan_progress():
+    """Get background scan progress status."""
+    return scan_progress.to_dict()
+
+
+@app.post("/api/scan/rescan")
+def trigger_rescan():
+    """Trigger a manual rescan of all sessions."""
+    global scan_progress
+    if scan_progress.is_scanning:
+        return {"status": "already_scanning", "progress": scan_progress.to_dict()}
+
+    scan_thread = threading.Thread(target=_background_scan, daemon=True)
+    scan_thread.start()
+    return {"status": "started"}
+
 
 @app.get("/api/projects")
 def get_projects():
